@@ -93,7 +93,7 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 - **Topology:** One direct pull request to `main`.
 - **Branch or spine:** `slice/lead-midi-stub`
-- **Final PR:** Open when both issues are done.
+- **Final PR:** https://github.com/cblack34/composerai/pull/9
 - **Human merge gate:** Only the human may physically merge the final PR to `main`. Agents must stop when it is ready.
 
 ## Amendments
@@ -104,9 +104,9 @@ None.
 
 Complete once when the final PR is ready for human merge. Do not use this section for WIP status.
 
-- **Outcome:**
-- **Verification:**
-- **Deviations:**
-- **Unresolved gates or risks:**
-- **Final PR:**
-- **Merge state:** Ready for the human to merge; agents do not merge to `main`.
+- **Outcome:** A Pydantic AI lead saves MIDI through `ProjectStore` at `projects/<project>/<section>/<file>.mid`. music21 builds the bytes behind `MidiModel`. The Compose probe writes `projects/demo/verse-1/mounted.txt`.
+- **Verification:** `uv run pytest` on CPython 3.14.7, 61 passed. Compose host file was `mounted\n`. One live prompt wrote `projects/demo/verse-1/sketch.mid` (72 bytes, header `MThd`). Evidence is on #7 and #8.
+- **Deviations:** Settings are read from the environment. `pydantic-settings` was not added. music21 is pinned at 10.5.0 in the MIDI package.
+- **Unresolved gates or risks:** No CI. Copilot review is requested on the final head. The chat UI is the next slice.
+- **Final PR:** https://github.com/cblack34/composerai/pull/9
+- **Merge state:** Waiting on review of the final head. Agents do not merge to `main`.
