@@ -22,6 +22,10 @@ Avoid copyleft licenses (GPL, AGPL, LGPL, etc.) and proprietary licenses unless 
   - Pydantic-settings
   - Pydantic AI (and Pydantic AI Harness where appropriate)
 
+### Pydantic over dataclasses
+
+Prefer Pydantic models over dataclasses. It is rare to need a plain data container that does not benefit from validation. Treat Pydantic as near-stdlib for structured data in this project.
+
 ## Adding dependencies
 
 Not a hard ban on new packages. Soft rule:
