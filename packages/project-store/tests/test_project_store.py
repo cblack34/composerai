@@ -16,10 +16,13 @@ from composerai_store import (
 
 _INSIDE_ABSOLUTE = "inside-absolute"
 _SEGMENT = st.text(
-    alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_",
+    alphabet=st.characters(
+        blacklist_categories=("Cs", "Cc", "Co", "Cn"),
+        blacklist_characters="/\x00",
+    ),
     min_size=1,
-    max_size=12,
-)
+    max_size=40,
+).filter(lambda segment: segment not in {".", ".."})
 
 
 def _snapshot(root: Path) -> list[tuple[str, str]]:

@@ -2,9 +2,6 @@
 name = "composerai-store"
 version = "0.1.0"
 description = "Async project-folder store"
-authors = [
-    { name = "Clayton", email = "clayton.black@betfanatics.com" }
-]
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.14.1",

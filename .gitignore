@@ -51,6 +51,7 @@ wheels/
 .installed.cfg
 *.egg
 .pytest_cache/
+.hypothesis/
 .coverage
 .coverage.*
 htmlcov/
