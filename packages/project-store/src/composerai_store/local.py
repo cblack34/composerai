@@ -143,11 +143,15 @@ class LocalProjectStore(ProjectStore):
     ) -> tuple[int, list[int]]:
         current = self._root_fd
         opened: list[int] = []
-        for name in parts:
-            current = (
-                _ensure_dir(current, name, path) if create else _open_dir(current, name, path)
-            )
-            opened.append(current)
+        try:
+            for name in parts:
+                current = (
+                    _ensure_dir(current, name, path) if create else _open_dir(current, name, path)
+                )
+                opened.append(current)
+        except BaseException:
+            self._close_opened(opened)
+            raise
         return current, opened
 
     def _open_file(self, parent_fd: int, name: str, path: str, *, write: bool) -> int:

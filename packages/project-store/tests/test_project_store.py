@@ -134,6 +134,20 @@ async def test_internal_symlink_is_not_followed(
     assert kept.read_bytes() == b"keep"
 
 
+async def test_failed_nested_traversal_closes_handles(
+    store: ProjectStore,
+    project_root: Path,
+) -> None:
+    await store.write("verse-1/file", b"x")
+    before = len(os.listdir("/dev/fd"))
+    with pytest.raises(FileNotFoundError):
+        await store.list("verse-1/missing")
+    with pytest.raises(NotADirectoryError):
+        await store.write("verse-1/file/child", b"nope")
+    assert len(os.listdir("/dev/fd")) == before
+    assert not (project_root / "verse-1" / "file" / "child").exists()
+
+
 @settings(deadline=None, database=None)
 @given(
     segments=st.lists(_SEGMENT, min_size=1, max_size=4),
