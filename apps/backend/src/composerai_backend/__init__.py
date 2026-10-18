@@ -1,19 +1,17 @@
 import asyncio
-import os
 import signal
-from pathlib import Path
 
 from composerai_backend.paths import probe_path
+from composerai_backend.settings import Settings
 from composerai_store import LocalProjectStore
 
 _PAYLOAD = b"mounted\n"
 
 
 async def _run() -> None:
-    root = Path(os.environ["COMPOSERAI_PROJECT_ROOT"])
-    project = os.environ.get("COMPOSERAI_PROJECT_NAME") or "demo"
-    store = LocalProjectStore(root)
-    await store.write(probe_path(project), _PAYLOAD)
+    settings = Settings()
+    store = LocalProjectStore(settings.project_root)
+    await store.write(probe_path(settings.project_name), _PAYLOAD)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGTERM, stop.set)

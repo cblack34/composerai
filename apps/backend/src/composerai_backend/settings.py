@@ -1,0 +1,29 @@
+from pathlib import Path
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from composerai_backend.paths import path_component
+
+DEFAULT_MODEL = "xai:grok-4.7"
+DEFAULT_PROJECT = "demo"
+
+
+class Settings(BaseSettings):
+    """Process configuration. Runners export these variables before startup."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="COMPOSERAI_",
+        env_ignore_empty=True,
+        extra="ignore",
+        frozen=True,
+    )
+
+    model: str = DEFAULT_MODEL
+    project_root: Path
+    project_name: str = DEFAULT_PROJECT
+
+    @field_validator("project_name")
+    @classmethod
+    def _project_name(cls, value: str) -> str:
+        return path_component(value)

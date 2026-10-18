@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from pydantic_ai import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from composerai_backend.lead import LeadDeps, agent, run_lead
+from composerai_backend.lead import LeadDeps, _main, agent, run_lead
 from composerai_midi import MidiModel
 from composerai_store import FileContent, PathRejected, ProjectEntry, ProjectStore
 
@@ -143,3 +143,27 @@ async def test_list_files_returns_store_entries(deps: LeadDeps, store: ProjectSt
 def test_lead_deps_reject_a_project_that_is_not_one_component() -> None:
     with pytest.raises(ValidationError):
         LeadDeps(store=object(), midi=object(), project="..")
+
+
+async def test_main_builds_the_lead_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
+    monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "demo")
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
+    seen: dict[str, object] = {}
+
+    async def fake(prompt: str, deps: LeadDeps, *, model: str | None = None) -> str:
+        seen["prompt"] = prompt
+        seen["model"] = model
+        seen["project"] = deps.project
+        await deps.store.write("demo/verse-1/notes.txt", b"ok")
+        return "saved"
+
+    monkeypatch.setattr("composerai_backend.lead.run_lead", fake)
+
+    await _main("write a verse")
+
+    assert seen == {"prompt": "write a verse", "model": "xai:grok-4", "project": "demo"}
+    assert (tmp_path / "demo" / "verse-1" / "notes.txt").read_bytes() == b"ok"

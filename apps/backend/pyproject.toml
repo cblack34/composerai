@@ -7,6 +7,7 @@ dependencies = [
     "composerai-midi",
     "composerai-store",
     "pydantic-ai-slim[xai]>=2.57.0",
+    "pydantic-settings>=2.11",
 ]
 
 [project.scripts]

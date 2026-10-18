@@ -13,6 +13,8 @@ models.ALLOW_MODEL_REQUESTS = False
 @pytest.fixture(autouse=True)
 def _hide_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("XAI_API_KEY", raising=False)
+    for name in ("COMPOSERAI_MODEL", "COMPOSERAI_PROJECT_ROOT", "COMPOSERAI_PROJECT_NAME"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture

@@ -1,7 +1,5 @@
 import asyncio
-import os
 import sys
-from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, SkipValidation, field_validator
@@ -11,17 +9,7 @@ from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
 
 from composerai_backend.paths import path_component, project_write_path, section_midi_path
-
-DEFAULT_MODEL = "xai:grok-4.7"
-DEFAULT_PROJECT = "demo"
-
-
-def model_name() -> str:
-    return os.environ.get("COMPOSERAI_MODEL") or DEFAULT_MODEL
-
-
-def project_name() -> str:
-    return os.environ.get("COMPOSERAI_PROJECT_NAME") or DEFAULT_PROJECT
+from composerai_backend.settings import DEFAULT_MODEL, Settings
 
 
 class LeadDeps(BaseModel):
@@ -38,7 +26,7 @@ class LeadDeps(BaseModel):
 
 
 agent: Agent[LeadDeps, str] = Agent(
-    model_name(),
+    DEFAULT_MODEL,
     name="lead",
     deps_type=LeadDeps,
     defer_model_check=True,
@@ -98,19 +86,19 @@ async def save_section_midi(
     return saved.path
 
 
-async def run_lead(prompt: str, deps: LeadDeps) -> str:
-    result = await agent.run(prompt, deps=deps, model=model_name())
+async def run_lead(prompt: str, deps: LeadDeps, *, model: str | None = None) -> str:
+    result = await agent.run(prompt, deps=deps, model=model)
     return result.output
 
 
 async def _main(prompt: str) -> None:
-    root = Path(os.environ["COMPOSERAI_PROJECT_ROOT"])
+    settings = Settings()
     deps = LeadDeps(
-        store=LocalProjectStore(root),
+        store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
-        project=project_name(),
+        project=settings.project_name,
     )
-    print(await run_lead(prompt, deps))
+    print(await run_lead(prompt, deps, model=settings.model))
 
 
 def main() -> None:
