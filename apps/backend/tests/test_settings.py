@@ -1,4 +1,3 @@
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -65,15 +64,18 @@ async def test_probe_writes_the_mount_file_for_the_configured_project(
 ) -> None:
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "demo")
+    served = False
 
-    async def stop(_: asyncio.Event) -> None:
-        return None
+    async def serve() -> None:
+        nonlocal served
+        served = True
+        assert (tmp_path / "demo" / "verse-1" / "mounted.txt").read_bytes() == b"mounted\n"
 
-    monkeypatch.setattr(asyncio.Event, "wait", stop)
+    monkeypatch.setattr("composerai_backend._serve", serve)
 
     await _run()
 
-    assert (tmp_path / "demo" / "verse-1" / "mounted.txt").read_bytes() == b"mounted\n"
+    assert served
 
 
 async def test_probe_does_not_write_when_the_project_name_is_rejected(

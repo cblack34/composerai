@@ -6,8 +6,10 @@ requires-python = ">=3.14"
 dependencies = [
     "composerai-midi",
     "composerai-store",
+    "fastapi>=0.146.0",
     "pydantic-ai-slim[xai]>=2.57.0",
     "pydantic-settings>=2.11",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
