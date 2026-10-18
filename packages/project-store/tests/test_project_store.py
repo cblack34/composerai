@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -146,6 +147,19 @@ async def test_failed_nested_traversal_closes_handles(
         await store.write("verse-1/file/child", b"nope")
     assert len(os.listdir("/dev/fd")) == before
     assert not (project_root / "verse-1" / "file" / "child").exists()
+
+
+async def test_fifo_without_a_peer_fails_promptly(
+    store: ProjectStore,
+    project_root: Path,
+) -> None:
+    section = project_root / "verse-1"
+    section.mkdir()
+    os.mkfifo(section / "pipe")
+    with pytest.raises(PathRejected):
+        await asyncio.wait_for(store.read("verse-1/pipe"), timeout=2)
+    with pytest.raises(PathRejected):
+        await asyncio.wait_for(store.write("verse-1/pipe", b"nope"), timeout=2)
 
 
 @settings(deadline=None, database=None)

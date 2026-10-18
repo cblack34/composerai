@@ -10,8 +10,10 @@ from pathlib import Path
 from composerai_store.store import FileContent, PathRejected, ProjectEntry, ProjectStore
 
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-_FILE_READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
-_FILE_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_CLOEXEC
+_FILE_READ_FLAGS = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
+_FILE_WRITE_FLAGS = (
+    os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
+)
 
 
 def _components(path: str) -> tuple[str, ...]:
@@ -106,10 +108,6 @@ class LocalProjectStore(ProjectStore):
         parent, opened = self._descend(parts[:-1], path=path, create=False)
         try:
             fd = self._open_file(parent, parts[-1], path, write=False)
-            info = os.fstat(fd)
-            if stat.S_ISDIR(info.st_mode):
-                os.close(fd)
-                raise IsADirectoryError(path)
             with os.fdopen(fd, "rb") as handle:
                 data = handle.read()
         finally:
@@ -157,10 +155,19 @@ class LocalProjectStore(ProjectStore):
     def _open_file(self, parent_fd: int, name: str, path: str, *, write: bool) -> int:
         flags = _FILE_WRITE_FLAGS if write else _FILE_READ_FLAGS
         try:
-            return os.open(name, flags, 0o644, dir_fd=parent_fd)
+            fd = os.open(name, flags, 0o644, dir_fd=parent_fd)
         except OSError as exc:
+            if exc.errno == errno.ENXIO:
+                raise PathRejected(path) from exc
             _reject_if_symlink(parent_fd, name, path, exc)
             raise
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            os.close(fd)
+            if stat.S_ISDIR(info.st_mode):
+                raise IsADirectoryError(path)
+            raise PathRejected(path)
+        return fd
 
     @staticmethod
     def _close_opened(opened: list[int]) -> None:
