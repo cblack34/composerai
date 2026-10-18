@@ -162,6 +162,34 @@ async def test_fifo_without_a_peer_fails_promptly(
         await asyncio.wait_for(store.write("verse-1/pipe", b"nope"), timeout=2)
 
 
+async def test_hard_link_write_does_not_change_the_outside_file(
+    store: ProjectStore,
+    project_root: Path,
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"keep")
+    os.link(outside, project_root / "alias")
+    written = await store.write("alias", b"inside")
+    assert written.data == b"inside"
+    assert await store.read("alias") == written
+    assert outside.read_bytes() == b"keep"
+
+
+async def test_concurrent_root_listings_agree(store: ProjectStore) -> None:
+    await store.write("a", b"1")
+    await store.write("b", b"2")
+    results = await asyncio.gather(*(store.list(".") for _ in range(32)))
+    expected = {"a", "b"}
+    assert all({entry.path for entry in result} == expected for result in results)
+
+
+async def test_concurrent_writes_leave_one_complete_payload(store: ProjectStore) -> None:
+    payloads = [bytes([index]) * 64 for index in range(8)]
+    await asyncio.gather(*(store.write("take", payload) for payload in payloads))
+    assert (await store.read("take")).data in payloads
+
+
 @settings(deadline=None, database=None)
 @given(
     segments=st.lists(_SEGMENT, min_size=1, max_size=4),

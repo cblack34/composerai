@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import os
+import secrets
 import stat
 import weakref
 from pathlib import Path
@@ -11,9 +12,7 @@ from composerai_store.store import FileContent, PathRejected, ProjectEntry, Proj
 
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _FILE_READ_FLAGS = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
-_FILE_WRITE_FLAGS = (
-    os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC
-)
+_FILE_CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
 def _components(path: str) -> tuple[str, ...]:
@@ -87,8 +86,13 @@ class LocalProjectStore(ProjectStore):
         parts = _components(path)
         directory, opened = self._descend(parts, path=path, create=False)
         try:
+            listing = os.open(".", _DIR_FLAGS, dir_fd=directory)
+            try:
+                names = os.listdir(listing)
+            finally:
+                os.close(listing)
             entries = []
-            for name in os.listdir(directory):
+            for name in names:
                 info = os.stat(name, dir_fd=directory, follow_symlinks=False)
                 entries.append(
                     ProjectEntry(
@@ -107,7 +111,7 @@ class LocalProjectStore(ProjectStore):
             raise PathRejected(path)
         parent, opened = self._descend(parts[:-1], path=path, create=False)
         try:
-            fd = self._open_file(parent, parts[-1], path, write=False)
+            fd = self._open_file(parent, parts[-1], path)
             with os.fdopen(fd, "rb") as handle:
                 data = handle.read()
         finally:
@@ -120,14 +124,7 @@ class LocalProjectStore(ProjectStore):
             raise PathRejected(path)
         parent, opened = self._descend(parts[:-1], path=path, create=True)
         try:
-            fd = self._open_file(parent, parts[-1], path, write=True)
-            try:
-                view = memoryview(data)
-                while view:
-                    written = os.write(fd, view)
-                    view = view[written:]
-            finally:
-                os.close(fd)
+            self._replace(parent, parts[-1], path, data)
         finally:
             self._close_opened(opened)
         return FileContent(path=_relative(parts), data=data)
@@ -152,10 +149,9 @@ class LocalProjectStore(ProjectStore):
             raise
         return current, opened
 
-    def _open_file(self, parent_fd: int, name: str, path: str, *, write: bool) -> int:
-        flags = _FILE_WRITE_FLAGS if write else _FILE_READ_FLAGS
+    def _open_file(self, parent_fd: int, name: str, path: str) -> int:
         try:
-            fd = os.open(name, flags, 0o644, dir_fd=parent_fd)
+            fd = os.open(name, _FILE_READ_FLAGS, dir_fd=parent_fd)
         except OSError as exc:
             if exc.errno == errno.ENXIO:
                 raise PathRejected(path) from exc
@@ -168,6 +164,30 @@ class LocalProjectStore(ProjectStore):
                 raise IsADirectoryError(path)
             raise PathRejected(path)
         return fd
+
+    def _replace(self, parent_fd: int, name: str, path: str, data: bytes) -> None:
+        try:
+            info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            info = None
+        if info is not None and not stat.S_ISREG(info.st_mode):
+            raise PathRejected(path)
+        token = f".composerai-{secrets.token_hex(8)}"
+        fd = os.open(token, _FILE_CREATE_FLAGS, 0o644, dir_fd=parent_fd)
+        try:
+            view = memoryview(data)
+            while view:
+                written = os.write(fd, view)
+                view = view[written:]
+            os.rename(token, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        except BaseException:
+            os.close(fd)
+            try:
+                os.unlink(token, dir_fd=parent_fd)
+            except OSError:
+                pass
+            raise
+        os.close(fd)
 
     @staticmethod
     def _close_opened(opened: list[int]) -> None:
