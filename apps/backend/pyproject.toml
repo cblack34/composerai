@@ -1,0 +1,18 @@
+[project]
+name = "composerai-backend"
+version = "0.1.0"
+description = "Project folder mount"
+requires-python = ">=3.12"
+dependencies = [
+    "composerai-store",
+]
+
+[project.scripts]
+composerai-backend = "composerai_backend:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+composerai-store = { workspace = true }

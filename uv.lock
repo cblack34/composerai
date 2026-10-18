@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "composerai",
+    "composerai-backend",
     "composerai-store",
 ]
 
@@ -46,6 +47,17 @@ dev = [
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
 ]
+
+[[package]]
+name = "composerai-backend"
+version = "0.1.0"
+source = { editable = "apps/backend" }
+dependencies = [
+    { name = "composerai-store" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "composerai-store", editable = "packages/project-store" }]
 
 [[package]]
 name = "composerai-store"

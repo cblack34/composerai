@@ -1,0 +1,9 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      COMPOSERAI_PROJECT_ROOT: /projects
+    volumes:
+      - ./projects:/projects
