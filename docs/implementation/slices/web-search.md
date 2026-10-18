@@ -99,5 +99,5 @@ None.
 - **Verification:** `uv run pytest` on CPython 3.14, 83 passed. A live chat through `http://127.0.0.1:5173/api/chat` returned 200. The reply reported web results for an invented phrase and did not save a file. Evidence is on #13.
 - **Deviations:** None. A blank query returns "The query is blank." and does not call the search agent.
 - **Unresolved gates or risks:** No CI. Feedback logging remains out of this slice.
-- **Final PR:** Pending the pull request URL.
-- **Merge state:** Not ready until review. Agents do not merge to `main`.
+- **Final PR:** https://github.com/cblack34/composerai/pull/14
+- **Merge state:** In review. Agents do not merge to `main`.
