@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -188,6 +189,53 @@ async def test_concurrent_writes_leave_one_complete_payload(store: ProjectStore)
     payloads = [bytes([index]) * 64 for index in range(8)]
     await asyncio.gather(*(store.write("take", payload) for payload in payloads))
     assert (await store.read("take")).data in payloads
+
+
+async def test_overlapping_list_and_write_skips_a_vanished_name(
+    store: ProjectStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Hold the staging file until list has enumerated it, then rename before stat.
+    staged = threading.Event()
+    listed = threading.Event()
+    renamed = threading.Event()
+    real_open = os.open
+    real_listdir = os.listdir
+    real_rename = os.rename
+
+    def open_and_wait(path, flags, mode=0o777, *, dir_fd=None):
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if isinstance(path, str) and path.startswith(".composerai-"):
+            staged.set()
+            if not listed.wait(timeout=5):
+                os.close(fd)
+                raise AssertionError("listing did not observe the staging name")
+        return fd
+
+    def listdir_and_wait(path):
+        names = real_listdir(path)
+        if any(name.startswith(".composerai-") for name in names):
+            listed.set()
+            if not renamed.wait(timeout=5):
+                raise AssertionError("write did not rename the staging name")
+        return names
+
+    def rename_and_release(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+        real_rename(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+        if isinstance(src, str) and src.startswith(".composerai-"):
+            renamed.set()
+
+    monkeypatch.setattr(os, "open", open_and_wait)
+    monkeypatch.setattr(os, "listdir", listdir_and_wait)
+    monkeypatch.setattr(os, "rename", rename_and_release)
+
+    write_task = asyncio.create_task(store.write("song", b"midi"))
+    assert await asyncio.to_thread(staged.wait, 5)
+    entries, written = await asyncio.gather(asyncio.create_task(store.list(".")), write_task)
+    assert written == FileContent(path="song", data=b"midi")
+    assert entries == []
+    assert await store.read("song") == written
+    assert await store.list(".") == [ProjectEntry(path="song", is_directory=False)]
 
 
 @settings(deadline=None, database=None)

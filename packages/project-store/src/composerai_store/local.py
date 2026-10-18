@@ -93,7 +93,10 @@ class LocalProjectStore(ProjectStore):
                 os.close(listing)
             entries = []
             for name in names:
-                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                try:
+                    info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
                 entries.append(
                     ProjectEntry(
                         path=_relative((*parts, name)),
