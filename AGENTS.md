@@ -31,10 +31,14 @@ docker compose up --build
 3. **Frontend talks only to the backend API.** No direct filesystem or model access.
 4. **MIDI models are invoked through a narrow interface.** The rest of the system does not depend on a specific model.
 
+## Dependencies
+
+Follow [`docs/engineering/dependencies.md`](docs/engineering/dependencies.md).
+
 ## Always / Ask first / Never
 
 - **Always:** follow `docs/engineering/workflow.md` and `docs/engineering/code-quality.md`; depend on interfaces at boundaries.
-- **Ask first:** changing a non-negotiable, adding a new external service, or expanding beyond the current seed scope.
+- **Ask first:** changing a non-negotiable, adding a new external service, expanding beyond the current seed scope, or adding a dependency whose license or maintenance status is unclear.
 - **Never:** implement deferred roadmap items in the seed; bypass ProjectStore; merge to `main`.
 
 ## Active build pack
@@ -43,3 +47,4 @@ docker compose up --build
 2. [`docs/vision.md`](docs/vision.md) — broader roadmap (context only; not in scope for seed)
 3. [`docs/engineering/code-quality.md`](docs/engineering/code-quality.md)
 4. [`docs/engineering/workflow.md`](docs/engineering/workflow.md)
+5. [`docs/engineering/dependencies.md`](docs/engineering/dependencies.md)
