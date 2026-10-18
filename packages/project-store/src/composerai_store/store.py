@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -23,12 +23,9 @@ class PathRejected(ValueError):
         super().__init__(f"rejected path: {path!r}")
 
 
-class ProjectStore(ABC):
-    @abstractmethod
+class ProjectStore(Protocol):
     async def list(self, path: str) -> list[ProjectEntry]: ...
 
-    @abstractmethod
     async def read(self, path: str) -> FileContent: ...
 
-    @abstractmethod
     async def write(self, path: str, data: bytes) -> FileContent: ...
