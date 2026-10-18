@@ -9,7 +9,7 @@ from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
 
 from composerai_backend.paths import path_component, project_write_path, section_midi_path
-from composerai_backend.settings import DEFAULT_MODEL, Settings
+from composerai_backend.settings import Settings
 
 
 class LeadDeps(BaseModel):
@@ -26,7 +26,6 @@ class LeadDeps(BaseModel):
 
 
 agent: Agent[LeadDeps, str] = Agent(
-    DEFAULT_MODEL,
     name="lead",
     deps_type=LeadDeps,
     defer_model_check=True,
