@@ -23,6 +23,11 @@ COPY apps/backend apps/backend
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package composerai-backend
 
+# The music21 wheel bundles the core corpus. Those scores have their own copyrights.
+# Keep the corpus package's Python modules and drop the score files.
+RUN find /app/.venv -path '*/music21/corpus/*' -type f ! -name '*.py' -delete \
+    && find /app/.venv -depth -path '*/music21/corpus/*' -type d -empty -delete
+
 ENV PATH="/app/.venv/bin:$PATH"
 
 ENTRYPOINT []

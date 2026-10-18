@@ -106,7 +106,7 @@ Complete once when the final PR is ready for human merge. Do not use this sectio
 
 - **Outcome:** A Pydantic AI lead saves MIDI through `ProjectStore` at `projects/<project>/<section>/<file>.mid`. music21 builds the bytes behind `MidiModel`. The Compose probe writes `projects/demo/verse-1/mounted.txt`.
 - **Verification:** `uv run pytest` on CPython 3.14.7, 64 passed, after writes were required to include a section folder. Compose host file was `mounted\n`. One live prompt wrote `projects/demo/verse-1/sketch.mid` (72 bytes, header `MThd`). Those two runtime checks ran before the path fix; the accepted paths are unchanged. Evidence is on #7 and #8.
-- **Deviations:** Settings are read from the environment. `pydantic-settings` was not added. music21 is pinned at 10.5.0 in the MIDI package.
+- **Deviations:** Settings are read from the environment. `pydantic-settings` was not added. music21 is pinned at 10.5.0 in the MIDI package. The image deletes music21's bundled score files after install and keeps the corpus Python modules.
 - **Unresolved gates or risks:** No CI. The chat UI is the next slice.
 - **Final PR:** https://github.com/cblack34/composerai/pull/9
 - **Merge state:** Ready for the human to merge. Agents do not merge to `main`.
