@@ -46,7 +46,14 @@ export default function App() {
 
   return (
     <main>
-      <ol className="transcript" ref={transcript}>
+      <ol
+        className="transcript"
+        ref={transcript}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label="Conversation"
+      >
         {messages.map((message, index) => (
           <li key={index}>
             <span className="role">{message.role === 'user' ? 'You' : 'Lead'}</span>
@@ -68,7 +75,11 @@ export default function App() {
           {pending ? 'Sending...' : 'Send'}
         </button>
       </form>
-      {error ? <p className="error">{error}</p> : null}
+      {error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : null}
     </main>
   )
 }
