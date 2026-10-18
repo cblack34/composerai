@@ -12,3 +12,11 @@ services:
       XAI_API_KEY: "${XAI_API_KEY:-}"
     volumes:
       - ./projects:/projects
+  web:
+    build:
+      context: apps/web
+    # Vite dev server. Open http://localhost:5173
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
