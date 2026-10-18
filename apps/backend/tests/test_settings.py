@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from composerai_backend import _run
-from composerai_backend.settings import DEFAULT_MODEL, DEFAULT_PROJECT, Settings
+from composerai_backend.settings import DEFAULT_MODEL, DEFAULT_PROJECT, DEFAULT_SEARCH_MODEL, Settings
 
 
 def test_settings_use_defaults_when_only_the_root_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -13,6 +13,7 @@ def test_settings_use_defaults_when_only_the_root_is_set(monkeypatch: pytest.Mon
     settings = Settings()
 
     assert settings.model == DEFAULT_MODEL
+    assert settings.search_model == DEFAULT_SEARCH_MODEL
     assert settings.project_name == DEFAULT_PROJECT
     assert settings.project_root == Path("/projects")
 
@@ -22,17 +23,22 @@ def test_settings_read_the_process_environment(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
+    monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "other")
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
 
     settings = Settings()
 
     assert settings.model == "xai:grok-4"
+    assert settings.search_model == "xai:grok-3"
     assert settings.project_name == "other"
     assert settings.project_root == tmp_path
 
 
-@pytest.mark.parametrize("name", ["COMPOSERAI_MODEL", "COMPOSERAI_PROJECT_NAME"])
+@pytest.mark.parametrize(
+    "name",
+    ["COMPOSERAI_MODEL", "COMPOSERAI_SEARCH_MODEL", "COMPOSERAI_PROJECT_NAME"],
+)
 def test_empty_values_fall_back_to_defaults(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", "/projects")
     monkeypatch.setenv(name, "")
@@ -40,6 +46,7 @@ def test_empty_values_fall_back_to_defaults(monkeypatch: pytest.MonkeyPatch, nam
     settings = Settings()
 
     assert settings.model == DEFAULT_MODEL
+    assert settings.search_model == DEFAULT_SEARCH_MODEL
     assert settings.project_name == DEFAULT_PROJECT
 
 

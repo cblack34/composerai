@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from composerai_backend.paths import path_component
 
 DEFAULT_MODEL = "xai:grok-4.7"
+DEFAULT_SEARCH_MODEL = "xai:grok-4.7"
 DEFAULT_PROJECT = "demo"
 
 
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
     )
 
     model: str = DEFAULT_MODEL
+    search_model: str = DEFAULT_SEARCH_MODEL
     project_root: Path
     project_name: str = DEFAULT_PROJECT
 

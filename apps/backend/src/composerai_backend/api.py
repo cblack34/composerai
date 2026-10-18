@@ -48,6 +48,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
         store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
         project=settings.project_name,
+        search_model=settings.search_model,
     )
     reply = await run_lead(
         body.prompt,

@@ -3,10 +3,12 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from pydantic_ai import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.native_tools import WebSearchTool
 
-from composerai_backend.lead import LeadDeps, _main, agent, run_lead
+from composerai_backend.lead import LeadDeps, _main, agent, run_lead, search_agent
+from composerai_backend.settings import DEFAULT_SEARCH_MODEL
 from composerai_midi import MidiModel
 from composerai_store import FileContent, PathRejected, ProjectEntry, ProjectStore
 
@@ -140,6 +142,65 @@ async def test_list_files_returns_store_entries(deps: LeadDeps, store: ProjectSt
     assert result == "listed"
 
 
+def _native_web_search(info: AgentInfo) -> bool:
+    return any(isinstance(tool, WebSearchTool) for tool in info.model_request_parameters.native_tools)
+
+
+async def test_web_search_returns_the_search_text_and_skips_a_blank_query(deps: LeadDeps) -> None:
+    calls: list[str] = []
+
+    def search(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        names = {tool.name for tool in info.function_tools}
+        assert names.isdisjoint({"list_files", "read_file", "write_file", "save_section_midi", "web_search"})
+        assert _native_web_search(info)
+        part = messages[-1].parts[-1]
+        assert isinstance(part, UserPromptPart)
+        content = part.content
+        assert isinstance(content, str)
+        calls.append(content)
+        return ModelResponse(parts=[TextPart(content="from the web")])
+
+    async def ask(query: str) -> str:
+        def lead(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            assert not _native_web_search(info)
+            if len(messages) == 1:
+                return ModelResponse(parts=[ToolCallPart("web_search", {"query": query})])
+            part = messages[-1].parts[-1]
+            assert isinstance(part, ToolReturnPart)
+            return ModelResponse(parts=[TextPart(content=part.content)])
+
+        with agent.override(model=FunctionModel(lead)), search_agent.override(model=FunctionModel(search)):
+            return await run_lead("Look something up.", deps)
+
+    assert await ask("") == "The query is blank."
+    assert await ask("  ") == "The query is blank."
+    assert calls == []
+    assert await ask("current chart") == "from the web"
+    assert calls == ["current chart"]
+
+
+async def test_lead_can_call_web_search_and_surface_the_text(deps: LeadDeps) -> None:
+    def search(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(parts=[TextPart(content="the chart is at 1")])
+
+    def lead(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart("web_search", {"query": "top song"})])
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        assert part.content == "the chart is at 1"
+        return ModelResponse(parts=[TextPart(content=f"Search said: {part.content}")])
+
+    with agent.override(model=FunctionModel(lead)), search_agent.override(model=FunctionModel(search)):
+        result = await run_lead("What is the top song?", deps)
+
+    assert result == "Search said: the chart is at 1"
+
+
+def test_lead_deps_default_the_search_model(deps: LeadDeps) -> None:
+    assert deps.search_model == DEFAULT_SEARCH_MODEL
+
+
 def test_lead_deps_reject_a_project_that_is_not_one_component() -> None:
     with pytest.raises(ValidationError):
         LeadDeps(store=object(), midi=object(), project="..")
@@ -150,6 +211,7 @@ async def test_main_builds_the_lead_from_settings(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
+    monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "demo")
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
     seen: dict[str, object] = {}
@@ -158,6 +220,7 @@ async def test_main_builds_the_lead_from_settings(
         seen["prompt"] = prompt
         seen["model"] = model
         seen["project"] = deps.project
+        seen["search_model"] = deps.search_model
         await deps.store.write("demo/verse-1/notes.txt", b"ok")
         return "saved"
 
@@ -165,5 +228,10 @@ async def test_main_builds_the_lead_from_settings(
 
     await _main("write a verse")
 
-    assert seen == {"prompt": "write a verse", "model": "xai:grok-4", "project": "demo"}
+    assert seen == {
+        "prompt": "write a verse",
+        "model": "xai:grok-4",
+        "project": "demo",
+        "search_model": "xai:grok-3",
+    }
     assert (tmp_path / "demo" / "verse-1" / "notes.txt").read_bytes() == b"ok"
