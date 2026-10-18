@@ -77,7 +77,7 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 - **Topology:** One direct pull request to `main`.
 - **Branch or spine:** `slice/store-protocol`
-- **Final PR:** Open when the issue is done.
+- **Final PR:** https://github.com/cblack34/composerai/pull/6
 - **Human merge gate:** Only the human may physically merge the final PR to `main`. Agents must stop when it is ready.
 
 ## Amendments
@@ -88,9 +88,9 @@ None.
 
 Complete once when the final PR is ready for human merge. Do not use this section for WIP status.
 
-- **Outcome:**
-- **Verification:**
-- **Deviations:**
-- **Unresolved gates or risks:**
-- **Final PR:**
-- **Merge state:** Ready for the human to merge; agents do not merge to `main`.
+- **Outcome:** `ProjectStore` is a `typing.Protocol` with `list`, `read`, and `write`. `LocalProjectStore` still implements it. `from __future__ import annotations` is gone from the local adapter. Store behavior is unchanged.
+- **Verification:** `uv run pytest` on CPython 3.14.7, 35 passed. Evidence is on #5.
+- **Deviations:** None.
+- **Unresolved gates or risks:** No CI. Copilot review is requested on the final head. The lead slice is next.
+- **Final PR:** https://github.com/cblack34/composerai/pull/6
+- **Merge state:** Waiting on review of the final head. Agents do not merge to `main`.
