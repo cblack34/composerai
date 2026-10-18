@@ -111,7 +111,7 @@ None.
 
 - **Outcome:** The repo is a uv workspace with one root `.venv`. An async `ProjectStore` is the only filesystem seam. Compose runs `apps/backend` with `projects/` bind-mounted, and a startup write appears on the host at `projects/verse-1/mounted.txt`.
 - **Verification:** `uv sync --all-packages`, `uv run pytest` (27 passed), and `docker compose up --build -d` followed by the host file check and `docker compose down`. Evidence is on #1 and #2.
-- **Deviations:** Generated filename tests skip unassigned, control, and private-use characters because this filesystem rejects some of them. The backend image runs as root so the bind mount is writable.
+- **Deviations:** Generated filename tests skip unassigned, control, and private-use characters because this filesystem rejects some of them. The backend image runs as root so the bind mount is writable. The local adapter does not follow symlinks. A symlink component is rejected, including one that points inside the project.
 - **Unresolved gates or risks:** No CI workflow. The lead, MIDI model, and chat UI remain later slices. The next slice needs an xAI API key and model choice.
 - **Final PR:** https://github.com/cblack34/composerai/pull/3
 - **Merge state:** Pull request is open. Agents do not merge to `main`.

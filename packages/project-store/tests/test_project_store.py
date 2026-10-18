@@ -116,6 +116,24 @@ async def test_symlink_escape_is_rejected(
     assert not (outside / "secret").exists()
 
 
+async def test_internal_symlink_is_not_followed(
+    store: ProjectStore,
+    project_root: Path,
+) -> None:
+    real = project_root / "real"
+    real.mkdir()
+    kept = real / "keep"
+    kept.write_bytes(b"keep")
+    (project_root / "alias").symlink_to(real, target_is_directory=True)
+    with pytest.raises(PathRejected):
+        await store.write("alias/keep", b"nope")
+    with pytest.raises(PathRejected):
+        await store.read("alias/keep")
+    with pytest.raises(PathRejected):
+        await store.list("alias")
+    assert kept.read_bytes() == b"keep"
+
+
 @settings(deadline=None, database=None)
 @given(
     segments=st.lists(_SEGMENT, min_size=1, max_size=4),
