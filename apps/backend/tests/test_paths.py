@@ -1,6 +1,6 @@
 import pytest
 
-from composerai_backend.paths import path_component, project_write_path, section_midi_path
+from composerai_backend.paths import path_component, probe_path, project_write_path, section_midi_path
 from composerai_store import PathRejected
 
 
@@ -18,9 +18,18 @@ def test_project_write_path_keeps_a_project_folder() -> None:
     assert project_write_path("demo/verse-1/notes.txt") == "demo/verse-1/notes.txt"
 
 
+def test_probe_path_uses_the_project_folder() -> None:
+    assert probe_path("demo") == "demo/verse-1/mounted.txt"
+
+
+def test_probe_path_rejects_a_dot_project() -> None:
+    with pytest.raises(PathRejected):
+        probe_path(".")
+
+
 @pytest.mark.parametrize(
     "path",
-    ["notes.txt", "", "..", "demo/../outside", "/notes.txt", "demo/", "demo/./notes.txt"],
+    ["notes.txt", "demo/notes.txt", "", "..", "demo/../outside", "/notes.txt", "demo/", "demo/./notes.txt"],
 )
 def test_project_write_path_rejects_before_a_store_would(path: str) -> None:
     with pytest.raises(PathRejected):
