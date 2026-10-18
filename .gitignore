@@ -1,6 +1,5 @@
 # Created from gitignore.io defaults + project stack
 # Templates: Windows, macOS, Linux, VisualStudioCode, JetBrains, Python, Node
-# Plus common Docker patterns
 
 ### OS ###
 .DS_Store
@@ -84,10 +83,6 @@ out/
 .env
 .env.*
 !.env.example
-
-### Docker ###
-.docker/
-*.dockerignore
 
 ### Project ###
 # Local project folders mounted for development
