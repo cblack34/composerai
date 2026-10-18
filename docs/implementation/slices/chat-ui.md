@@ -100,4 +100,9 @@ None.
 
 ## Delivery record
 
-Filled when the pull request is ready for human merge.
+- **Outcome:** The browser chat posts to `POST /api/chat`. The endpoint runs the existing lead. A live chat saved `projects/demo/verse-1/chat.mid`.
+- **Verification:** `uv run pytest` on CPython 3.14.7, 79 passed. `npm test` in `apps/web`, 2 passed. Compose wrote `mounted\n`. Headless Chrome rendered the prompt, the textarea, and Send. A blank prompt through `http://127.0.0.1:5173/api/chat` returned 400. One live prompt returned a reply and wrote a 72-byte file whose header is `MThd`. Evidence is on #10 and #11.
+- **Deviations:** None. FastAPI 0.146.0 is MIT. The web image is `node:24.22.0-trixie-slim`.
+- **Unresolved gates or risks:** No CI. Web search and feedback logging remain out of this slice.
+- **Final PR:** https://github.com/cblack34/composerai/pull/12
+- **Merge state:** Ready for the human to merge. Agents do not merge to `main`.
