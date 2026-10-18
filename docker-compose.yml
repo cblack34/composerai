@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
+    # Published on loopback. The process still listens on all interfaces inside the network.
+    ports:
+      - "127.0.0.1:8000:8000"
     environment:
       COMPOSERAI_PROJECT_ROOT: /projects
       COMPOSERAI_MODEL: "${COMPOSERAI_MODEL:-xai:grok-4.7}"
@@ -10,3 +13,12 @@ services:
       XAI_API_KEY: "${XAI_API_KEY:-}"
     volumes:
       - ./projects:/projects
+  web:
+    build:
+      context: apps/web
+    # Vite dev server. Open http://localhost:5173
+    # Published on loopback. The process still listens on all interfaces inside the network.
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend

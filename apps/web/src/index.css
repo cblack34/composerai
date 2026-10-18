@@ -1,0 +1,55 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.transcript {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 1rem;
+  list-style: none;
+}
+
+.transcript li {
+  margin-bottom: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.role {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+label {
+  grid-column: 1 / -1;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.error {
+  margin: 0;
+  padding: 0 1rem 1rem;
+}

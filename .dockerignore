@@ -5,3 +5,4 @@
 .pytest_cache
 .hypothesis
 projects
+**/node_modules

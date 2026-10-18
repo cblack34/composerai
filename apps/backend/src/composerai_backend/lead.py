@@ -1,9 +1,10 @@
 import asyncio
 import sys
+from collections.abc import Sequence
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, SkipValidation, field_validator
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelMessage, RunContext
 
 from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
@@ -85,8 +86,19 @@ async def save_section_midi(
     return saved.path
 
 
-async def run_lead(prompt: str, deps: LeadDeps, *, model: str | None = None) -> str:
-    result = await agent.run(prompt, deps=deps, model=model)
+async def run_lead(
+    prompt: str,
+    deps: LeadDeps,
+    *,
+    model: str | None = None,
+    message_history: Sequence[ModelMessage] | None = None,
+) -> str:
+    result = await agent.run(
+        prompt,
+        deps=deps,
+        model=model,
+        message_history=message_history,
+    )
     return result.output
 
 

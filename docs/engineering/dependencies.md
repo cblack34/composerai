@@ -12,6 +12,8 @@ Prefer permissive licenses that do not require the project itself to be open-sou
 
 Avoid copyleft licenses (GPL, AGPL, LGPL, etc.) and proprietary licenses unless explicitly approved.
 
+MPL-2.0 is acceptable for an unmodified package. Using and linking it does not require this project to use MPL. Do not edit files inside that package. A change to one of those files would have to be distributed under MPL-2.0.
+
 ## Package preferences
 
 - Prefer the standard library when it is sufficient.
