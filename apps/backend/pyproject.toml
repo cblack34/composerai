@@ -2,7 +2,7 @@
 name = "composerai-backend"
 version = "0.1.0"
 description = "Project folder mount"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "composerai-store",
 ]
