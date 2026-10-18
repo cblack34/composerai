@@ -105,7 +105,7 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 ## Amendments
 
-None.
+- **2026-10-18:** Root confinement rejects absolute paths, `..`, and every symlink component, including a link that points inside the root. It does not cover a same-filesystem rename of a directory after that directory's descriptor is opened. The descriptor stays on that inode, so a later write follows the directory. Checking ancestry and then writing still races the rename. Closing it in the publishing syscall is not portable: macOS `renameatx_np` accepts `RENAME_RESOLVE_BENEATH | RENAME_NOFOLLOW_ANY`, and Linux `renameat2` has no resolve flags. `openat2` `RESOLVE_BENEATH` covers one lookup, not a descriptor already opened, and a path rename from the root fd follows an intermediate symlink. A privileged bind mount or a process-wide sandbox is out of scope for this adapter.
 
 ## Delivery record
 

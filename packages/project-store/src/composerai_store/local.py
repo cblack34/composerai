@@ -169,15 +169,22 @@ class LocalProjectStore(ProjectStore):
         return fd
 
     def _replace(self, parent_fd: int, name: str, path: str, data: bytes) -> None:
+        # This fd follows its inode across a same-filesystem rename. Re-checking
+        # ancestry before the rename races, and Linux renameat2 cannot both stay
+        # under the root fd and refuse intermediate symlinks. That relocation is
+        # outside confinement; symlinks, absolute paths, and ".." are not.
         try:
             info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
         except FileNotFoundError:
             info = None
         if info is not None and not stat.S_ISREG(info.st_mode):
             raise PathRejected(path)
+        create_mode = 0o644 if info is None else stat.S_IMODE(info.st_mode)
         token = f".composerai-{secrets.token_hex(8)}"
-        fd = os.open(token, _FILE_CREATE_FLAGS, 0o644, dir_fd=parent_fd)
+        fd = os.open(token, _FILE_CREATE_FLAGS, create_mode, dir_fd=parent_fd)
         try:
+            if info is not None:
+                os.fchmod(fd, create_mode)
             view = memoryview(data)
             while view:
                 written = os.write(fd, view)

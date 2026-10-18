@@ -1,5 +1,6 @@
 import asyncio
 import os
+import stat
 import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -161,6 +162,26 @@ async def test_fifo_without_a_peer_fails_promptly(
         await asyncio.wait_for(store.read("verse-1/pipe"), timeout=2)
     with pytest.raises(PathRejected):
         await asyncio.wait_for(store.write("verse-1/pipe", b"nope"), timeout=2)
+
+
+async def test_overwrite_keeps_private_mode(
+    store: ProjectStore,
+    project_root: Path,
+) -> None:
+    target = project_root / "verse-1" / "secret"
+    await store.write("verse-1/secret", b"old")
+    os.chmod(target, 0o600)
+    previous = os.umask(0o022)
+    try:
+        await store.write("verse-1/secret", b"new")
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+        assert target.read_bytes() == b"new"
+        await store.write("verse-1/fresh", b"created")
+        fresh = project_root / "verse-1" / "fresh"
+        assert stat.S_IMODE(fresh.stat().st_mode) == 0o644
+        assert fresh.read_bytes() == b"created"
+    finally:
+        os.umask(previous)
 
 
 async def test_hard_link_write_does_not_change_the_outside_file(
