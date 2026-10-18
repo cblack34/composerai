@@ -1,0 +1,145 @@
+from collections.abc import Mapping
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+from pydantic_ai import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from composerai_backend.lead import LeadDeps, agent, run_lead
+from composerai_midi import MidiModel
+from composerai_store import FileContent, PathRejected, ProjectEntry, ProjectStore
+
+
+def _script(tool_name: str, args: Mapping[str, object]) -> FunctionModel:
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart(tool_name, dict(args))])
+        return ModelResponse(parts=[TextPart(content="done")])
+
+    return FunctionModel(respond)
+
+
+class _UnusedMidi:
+    async def generate(self, section: str) -> bytes:
+        raise AssertionError(section)
+
+
+class _RecordingStore:
+    def __init__(self, inner: ProjectStore) -> None:
+        self.inner = inner
+        self.writes: list[str] = []
+
+    async def list(self, path: str) -> list[ProjectEntry]:
+        return await self.inner.list(path)
+
+    async def read(self, path: str) -> FileContent:
+        return await self.inner.read(path)
+
+    async def write(self, path: str, data: bytes) -> FileContent:
+        self.writes.append(path)
+        return await self.inner.write(path, data)
+
+
+async def test_save_section_midi_writes_standard_midi(
+    deps: LeadDeps,
+    store: ProjectStore,
+) -> None:
+    with agent.override(model=_script("save_section_midi", {"section": "verse-1", "file": "sketch"})):
+        result = await run_lead("Save a verse.", deps)
+
+    assert result == "done"
+    saved = await store.read("demo/verse-1/sketch.mid")
+    assert saved.path == "demo/verse-1/sketch.mid"
+    assert saved.data.startswith(b"MThd")
+
+
+async def test_save_section_midi_honors_an_explicit_project(
+    deps: LeadDeps,
+    store: ProjectStore,
+) -> None:
+    with agent.override(
+        model=_script(
+            "save_section_midi",
+            {"section": "chorus", "file": "hook", "project": "other"},
+        )
+    ):
+        await run_lead("Save a chorus.", deps)
+
+    saved = await store.read("other/chorus/hook.mid")
+    assert saved.path == "other/chorus/hook.mid"
+    assert saved.data.startswith(b"MThd")
+
+
+@pytest.mark.parametrize("section", ["..", "", "bad/name"])
+async def test_bad_section_does_not_create_a_file_at_the_mount_root(
+    store: ProjectStore,
+    project_root: Path,
+    section: str,
+) -> None:
+    recording = _RecordingStore(store)
+    deps = LeadDeps(store=recording, midi=_UnusedMidi(), project="demo")
+    with pytest.raises(PathRejected):
+        with agent.override(model=_script("save_section_midi", {"section": section, "file": "sketch"})):
+            await run_lead("Save a verse.", deps)
+
+    assert recording.writes == []
+    assert list(project_root.iterdir()) == []
+
+
+async def test_write_without_a_project_is_rejected(
+    store: ProjectStore,
+    project_root: Path,
+    midi: MidiModel,
+) -> None:
+    recording = _RecordingStore(store)
+    deps = LeadDeps(store=recording, midi=midi, project="demo")
+    with pytest.raises(PathRejected):
+        with agent.override(model=_script("write_file", {"path": "notes.txt", "content": "nope"})):
+            await run_lead("Write a note.", deps)
+
+    assert recording.writes == []
+    assert list(project_root.iterdir()) == []
+
+
+async def test_write_and_read_round_trip(deps: LeadDeps, store: ProjectStore) -> None:
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("write_file", {"path": "demo/verse-1/notes.txt", "content": "hello"})]
+            )
+        if len(messages) == 3:
+            return ModelResponse(parts=[ToolCallPart("read_file", {"path": "demo/verse-1/notes.txt"})])
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        assert part.content == "hello"
+        return ModelResponse(parts=[TextPart(content="read")])
+
+    with agent.override(model=FunctionModel(respond)):
+        result = await run_lead("Write notes and read them back.", deps)
+
+    assert result == "read"
+    saved = await store.read("demo/verse-1/notes.txt")
+    assert saved.data == b"hello"
+
+
+async def test_list_files_returns_store_entries(deps: LeadDeps, store: ProjectStore) -> None:
+    await store.write("demo/verse-1/notes.txt", b"hello")
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart("list_files", {"path": "demo/verse-1"})])
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        assert part.content == [{"path": "demo/verse-1/notes.txt", "is_directory": False}]
+        return ModelResponse(parts=[TextPart(content="listed")])
+
+    with agent.override(model=FunctionModel(respond)):
+        result = await run_lead("List the verse.", deps)
+
+    assert result == "listed"
+
+
+def test_lead_deps_reject_a_project_that_is_not_one_component() -> None:
+    with pytest.raises(ValidationError):
+        LeadDeps(store=object(), midi=object(), project="..")

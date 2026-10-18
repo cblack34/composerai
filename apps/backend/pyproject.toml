@@ -1,14 +1,17 @@
 [project]
 name = "composerai-backend"
 version = "0.1.0"
-description = "Project folder mount"
+description = "Songwriting lead"
 requires-python = ">=3.14"
 dependencies = [
+    "composerai-midi",
     "composerai-store",
+    "pydantic-ai-slim[xai]>=2.57.0",
 ]
 
 [project.scripts]
 composerai-backend = "composerai_backend:main"
+composerai-lead = "composerai_backend.lead:main"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
@@ -16,3 +19,4 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 composerai-store = { workspace = true }
+composerai-midi = { workspace = true }
