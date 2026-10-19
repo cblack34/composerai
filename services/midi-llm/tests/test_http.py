@@ -162,6 +162,7 @@ def test_sampling_bounds_are_forwarded(
 def test_health_responds_while_generation_runs(service: Service) -> None:
     started = threading.Event()
     release = threading.Event()
+    posted: list[object] = []
 
     def generate(prompt: str, temperature: float, top_p: float, max_tokens: int) -> bytes:
         started.set()
@@ -172,20 +173,28 @@ def test_health_responds_while_generation_runs(service: Service) -> None:
     with TestClient(create_app(service)) as client:
 
         def post() -> None:
-            response = client.post("/generate", json={"prompt": "a waltz", "max_tokens": 8})
-            assert response.status_code == 200
-            assert response.content == MIDI
+            try:
+                posted.append(client.post("/generate", json={"prompt": "a waltz", "max_tokens": 8}))
+            except Exception as exc:
+                posted.append(exc)
 
         thread = threading.Thread(target=post)
         thread.start()
-        assert started.wait(timeout=2)
-        health = client.get("/health")
-        release.set()
-        thread.join(timeout=5)
+        try:
+            assert started.wait(timeout=2)
+            health = client.get("/health")
+            assert health.status_code == 200
+            assert health.content == b"ok"
+        finally:
+            release.set()
+            thread.join(timeout=5)
 
-    assert health.status_code == 200
-    assert health.content == b"ok"
     assert thread.is_alive() is False
+    assert len(posted) == 1
+    response = posted[0]
+    assert not isinstance(response, Exception)
+    assert response.status_code == 200
+    assert response.content == MIDI
 
 
 async def test_a_cancelled_request_does_not_overlap_the_next_generation(service: Service) -> None:
