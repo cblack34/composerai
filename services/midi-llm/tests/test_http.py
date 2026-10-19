@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -57,9 +58,21 @@ def test_generate_before_load_is_503(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "payload",
-    [{}, {"prompt": 1}, {"prompt": ""}, {"prompt": "   "}, {"prompt": "a waltz", "max_tokens": 1.5}],
+    [
+        {},
+        {"prompt": 1},
+        {"prompt": ""},
+        {"prompt": "   "},
+        {"prompt": "a waltz", "max_tokens": 1.5},
+        {"prompt": "a waltz", "temperature": 0},
+        {"prompt": "a waltz", "temperature": -1},
+        {"prompt": "a waltz", "top_p": -0.1},
+        {"prompt": "a waltz", "top_p": 1.1},
+        {"prompt": "a waltz", "max_tokens": 0},
+        {"prompt": "a waltz", "max_tokens": 2},
+    ],
 )
-def test_bad_prompt_is_rejected_and_does_not_run_the_model(
+def test_invalid_generate_body_is_rejected_and_does_not_run_the_model(
     service: Service,
     client: TestClient,
     payload: dict[str, object],
@@ -110,3 +123,63 @@ def test_generate_forwards_sampling_parameters(service: Service, client: TestCli
     assert response.headers["content-type"] == "audio/midi"
     assert response.content == MIDI
     assert seen == [("a waltz", 0.5, 0.9, 8)]
+
+
+@pytest.mark.parametrize(
+    ("temperature", "top_p", "max_tokens"),
+    [(0.1, 0.0, 3), (1.0, 1.0, 3)],
+)
+def test_sampling_bounds_are_forwarded(
+    service: Service,
+    client: TestClient,
+    temperature: float,
+    top_p: float,
+    max_tokens: int,
+) -> None:
+    seen: list[tuple[float, float, int]] = []
+
+    def generate(prompt: str, temperature: float, top_p: float, max_tokens: int) -> bytes:
+        seen.append((temperature, top_p, max_tokens))
+        return MIDI
+
+    service.mark_ready(generate)
+    response = client.post(
+        "/generate",
+        json={
+            "prompt": "a waltz",
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+        },
+    )
+    assert response.status_code == 200
+    assert seen == [(temperature, top_p, max_tokens)]
+
+
+def test_health_responds_while_generation_runs(service: Service) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    def generate(prompt: str, temperature: float, top_p: float, max_tokens: int) -> bytes:
+        started.set()
+        assert release.wait(timeout=5)
+        return MIDI
+
+    service.mark_ready(generate)
+    with TestClient(create_app(service)) as client:
+
+        def post() -> None:
+            response = client.post("/generate", json={"prompt": "a waltz", "max_tokens": 8})
+            assert response.status_code == 200
+            assert response.content == MIDI
+
+        thread = threading.Thread(target=post)
+        thread.start()
+        assert started.wait(timeout=2)
+        health = client.get("/health")
+        release.set()
+        thread.join(timeout=5)
+
+    assert health.status_code == 200
+    assert health.content == b"ok"
+    assert thread.is_alive() is False

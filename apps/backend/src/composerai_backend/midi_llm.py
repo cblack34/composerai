@@ -1,4 +1,5 @@
 import asyncio
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -33,4 +34,6 @@ class HttpMidiLlmClient:
         except urllib.error.URLError as exc:
             if isinstance(exc, urllib.error.HTTPError):
                 exc.close()
+            raise MidiLlmError(str(exc)) from exc
+        except (http.client.HTTPException, OSError) as exc:
             raise MidiLlmError(str(exc)) from exc

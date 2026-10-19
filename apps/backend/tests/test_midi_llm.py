@@ -1,4 +1,5 @@
 import json
+import socket
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -66,3 +67,72 @@ async def test_http_client_raises_when_nothing_is_listening() -> None:
     client = HttpMidiLlmClient(f"http://{host}:{port}")
     with pytest.raises(MidiLlmError):
         await client.generate("a waltz")
+
+
+class _DropHandler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:
+        self.connection.shutdown(socket.SHUT_RDWR)
+        self.connection.close()
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+
+async def test_http_client_raises_when_the_service_drops_the_connection() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _DropHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    try:
+        client = HttpMidiLlmClient(f"http://{host}:{port}")
+        with pytest.raises(MidiLlmError):
+            await client.generate("a waltz")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _truncated_response_url() -> tuple[str, threading.Thread]:
+    ready = threading.Event()
+    port: dict[str, int] = {}
+
+    def run() -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port["value"] = listener.getsockname()[1]
+        ready.set()
+        conn, _ = listener.accept()
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        conn.sendall(
+            b"HTTP/1.0 200 OK\r\nContent-Type: audio/midi\r\nContent-Length: 100\r\n\r\nMThd"
+        )
+        conn.shutdown(socket.SHUT_WR)
+        try:
+            while conn.recv(1024):
+                pass
+        except OSError:
+            pass
+        conn.close()
+        listener.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    assert ready.wait(timeout=2)
+    return f"http://127.0.0.1:{port['value']}", thread
+
+
+async def test_http_client_raises_when_the_response_is_truncated() -> None:
+    url, thread = _truncated_response_url()
+    try:
+        client = HttpMidiLlmClient(url)
+        with pytest.raises(MidiLlmError):
+            await client.generate("a waltz")
+    finally:
+        thread.join(timeout=5)

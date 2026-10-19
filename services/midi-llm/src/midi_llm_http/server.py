@@ -1,8 +1,9 @@
+import threading
 import traceback
 from typing import Protocol
 
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 DEFAULT_TEMPERATURE = 1.0
 DEFAULT_TOP_P = 0.98
@@ -16,6 +17,7 @@ class MidiGenerator(Protocol):
 class Service:
     def __init__(self) -> None:
         self._generator: MidiGenerator | None = None
+        self._generate_lock = threading.Lock()
 
     @property
     def ready(self) -> bool:
@@ -25,17 +27,18 @@ class Service:
         self._generator = generator
 
     def generate(self, prompt: str, temperature: float, top_p: float, max_tokens: int) -> bytes:
-        generator = self._generator
-        if generator is None:
-            raise RuntimeError("model is not loaded")
-        return generator(prompt, temperature, top_p, max_tokens)
+        with self._generate_lock:
+            generator = self._generator
+            if generator is None:
+                raise RuntimeError("model is not loaded")
+            return generator(prompt, temperature, top_p, max_tokens)
 
 
 class GenerateBody(BaseModel):
     prompt: str
-    temperature: float = DEFAULT_TEMPERATURE
-    top_p: float = DEFAULT_TOP_P
-    max_tokens: int = DEFAULT_MAX_TOKENS
+    temperature: float = Field(default=DEFAULT_TEMPERATURE, gt=0, allow_inf_nan=False)
+    top_p: float = Field(default=DEFAULT_TOP_P, ge=0, le=1, allow_inf_nan=False)
+    max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, ge=3)
 
     @field_validator("prompt")
     @classmethod
