@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -194,6 +195,29 @@ async def test_lead_can_call_web_search_and_surface_the_text(deps: LeadDeps) -> 
         result = await run_lead("What is the top song?", deps)
 
     assert result == "Search said: the chart is at 1"
+
+
+async def test_web_search_runs_on_the_deps_search_model(
+    store: ProjectStore,
+    midi: MidiModel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = LeadDeps(store=store, midi=midi, project="demo", search_model="xai:grok-3")
+    seen: dict[str, object] = {}
+
+    async def run(prompt: str, **kwargs: object) -> SimpleNamespace:
+        seen["prompt"] = prompt
+        seen.update(kwargs)
+        return SimpleNamespace(output="ok")
+
+    monkeypatch.setattr(search_agent, "run", run)
+
+    with agent.override(model=_script("web_search", {"query": "top song"})):
+        await run_lead("Look something up.", deps)
+
+    assert seen["prompt"] == "top song"
+    assert seen["model"] == "xai:grok-3"
+    assert seen["usage"] is not None
 
 
 def test_lead_deps_reject_a_project_that_is_not_one_component() -> None:

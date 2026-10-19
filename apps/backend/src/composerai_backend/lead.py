@@ -104,7 +104,7 @@ async def web_search(ctx: RunContext[LeadDeps], query: str) -> str:
     text = query.strip()
     if not text:
         return "The query is blank."
-    result = await search_agent.run(text, model=ctx.deps.search_model)
+    result = await search_agent.run(text, model=ctx.deps.search_model, usage=ctx.usage)
     return result.output
 
 
