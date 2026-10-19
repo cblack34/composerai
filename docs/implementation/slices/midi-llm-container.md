@@ -97,7 +97,7 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 - **Topology:** direct PR to `main`
 - **Branch or spine:** `slice/midi-llm-container`
-- **Final PR:** opened when the slice is ready for review
+- **Final PR:** https://github.com/cblack34/composerai/pull/20
 - **Human merge gate:** Only the human may physically merge the final PR to `main`. Agents must stop when it is ready.
 
 ## Amendments
@@ -106,4 +106,9 @@ None.
 
 ## Delivery record
 
-Complete once when the final PR is ready for human merge. Do not use this section for WIP status.
+- **Outcome:** The `midi-llm` service returns one MIDI body for a text prompt. `generate_midi_from_text` archives that generation and writes the section file through ProjectStore. The music21 tool still works.
+- **Verification:** `uv run pytest`, 145 passed, on `c80f315`. Live `POST` to `127.0.0.1:8001/generate` with `max_tokens` 64 returned a body starting with `MThd`. The weight file is in the `midi-llm-weights` volume and not in the image or the git tree. Issues [#18](https://github.com/cblack34/composerai/issues/18) and [#19](https://github.com/cblack34/composerai/issues/19).
+- **Deviations:** None. The client sends the prompt only. Sampling defaults stay on the service. bfloat16 loaded on CPU.
+- **Unresolved gates or risks:** A full generation uses 2046 tokens and will be slow on CPU. Docker cannot use the M4 GPU. Continue and infill stay deferred.
+- **Final PR:** https://github.com/cblack34/composerai/pull/20
+- **Merge state:** Ready for the human to merge. Agents do not merge to `main`.
