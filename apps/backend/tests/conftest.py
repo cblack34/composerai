@@ -41,4 +41,4 @@ def midi() -> MidiModel:
 
 @pytest.fixture
 def deps(store: ProjectStore, midi: MidiModel) -> LeadDeps:
-    return LeadDeps(store=store, midi=midi, project="demo")
+    return LeadDeps(store=store, midi=midi, project="demo", search_model="xai:grok-4.7")

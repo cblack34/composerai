@@ -8,7 +8,6 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.native_tools import WebSearchTool
 
 from composerai_backend.lead import LeadDeps, _main, agent, run_lead, search_agent
-from composerai_backend.settings import DEFAULT_SEARCH_MODEL
 from composerai_midi import MidiModel
 from composerai_store import FileContent, PathRejected, ProjectEntry, ProjectStore
 
@@ -80,7 +79,7 @@ async def test_bad_section_does_not_create_a_file_at_the_mount_root(
     section: str,
 ) -> None:
     recording = _RecordingStore(store)
-    deps = LeadDeps(store=recording, midi=_UnusedMidi(), project="demo")
+    deps = LeadDeps(store=recording, midi=_UnusedMidi(), project="demo", search_model="xai:grok-4.7")
     with pytest.raises(PathRejected):
         with agent.override(model=_script("save_section_midi", {"section": section, "file": "sketch"})):
             await run_lead("Save a verse.", deps)
@@ -95,7 +94,7 @@ async def test_write_without_a_project_is_rejected(
     midi: MidiModel,
 ) -> None:
     recording = _RecordingStore(store)
-    deps = LeadDeps(store=recording, midi=midi, project="demo")
+    deps = LeadDeps(store=recording, midi=midi, project="demo", search_model="xai:grok-4.7")
     with pytest.raises(PathRejected):
         with agent.override(model=_script("write_file", {"path": "notes.txt", "content": "nope"})):
             await run_lead("Write a note.", deps)
@@ -197,13 +196,9 @@ async def test_lead_can_call_web_search_and_surface_the_text(deps: LeadDeps) -> 
     assert result == "Search said: the chart is at 1"
 
 
-def test_lead_deps_default_the_search_model(deps: LeadDeps) -> None:
-    assert deps.search_model == DEFAULT_SEARCH_MODEL
-
-
 def test_lead_deps_reject_a_project_that_is_not_one_component() -> None:
     with pytest.raises(ValidationError):
-        LeadDeps(store=object(), midi=object(), project="..")
+        LeadDeps(store=object(), midi=object(), project="..", search_model="xai:grok-4.7")
 
 
 async def test_main_builds_the_lead_from_settings(

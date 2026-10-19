@@ -11,7 +11,7 @@ from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
 
 from composerai_backend.paths import path_component, project_write_path, section_midi_path
-from composerai_backend.settings import DEFAULT_SEARCH_MODEL, Settings
+from composerai_backend.settings import Settings
 
 
 class LeadDeps(BaseModel):
@@ -20,7 +20,7 @@ class LeadDeps(BaseModel):
     store: Annotated[ProjectStore, SkipValidation]
     midi: Annotated[MidiModel, SkipValidation]
     project: str
-    search_model: str = DEFAULT_SEARCH_MODEL
+    search_model: str
 
     @field_validator("project")
     @classmethod
