@@ -1,7 +1,9 @@
+import asyncio
 import os
 import subprocess
 import sys
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -18,8 +20,9 @@ def service() -> Service:
 
 
 @pytest.fixture
-def client(service: Service) -> TestClient:
-    return TestClient(create_app(service))
+def client(service: Service) -> Iterator[TestClient]:
+    with TestClient(create_app(service)) as test_client:
+        yield test_client
 
 
 def test_importing_the_http_module_does_not_import_torch() -> None:
@@ -183,3 +186,39 @@ def test_health_responds_while_generation_runs(service: Service) -> None:
     assert health.status_code == 200
     assert health.content == b"ok"
     assert thread.is_alive() is False
+
+
+async def test_a_cancelled_request_does_not_overlap_the_next_generation(service: Service) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    second = threading.Event()
+    calls = 0
+
+    def generate(prompt: str, temperature: float, top_p: float, max_tokens: int) -> bytes:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            started.set()
+            assert release.wait(timeout=5)
+        else:
+            second.set()
+        return MIDI
+
+    service.mark_ready(generate)
+    await service.start()
+    try:
+        first = asyncio.create_task(service.generate("a waltz", 1.0, 0.98, 8))
+        assert await asyncio.to_thread(started.wait, 2)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert second.is_set() is False
+        follow = asyncio.create_task(service.generate("a waltz", 1.0, 0.98, 8))
+        await asyncio.sleep(0.05)
+        assert second.is_set() is False
+        release.set()
+        assert await follow == MIDI
+        assert calls == 2
+    finally:
+        release.set()
+        await service.stop()

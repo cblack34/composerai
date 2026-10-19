@@ -1,24 +1,40 @@
-import threading
+import asyncio
+import contextlib
 import traceback
 
 import uvicorn
 
-from midi_llm_http.server import Service, create_app
+from midi_llm_http.server import MidiGenerator, Service, create_app
 
 
-def _load(service: Service) -> None:
+def _checkpoint() -> MidiGenerator:
+    from midi_llm_http.model import CheckpointGenerator
+
+    return CheckpointGenerator()
+
+
+async def _load(service: Service) -> None:
     try:
-        from midi_llm_http.model import CheckpointGenerator
-
-        service.mark_ready(CheckpointGenerator())
+        service.mark_ready(await asyncio.to_thread(_checkpoint))
     except Exception:
         traceback.print_exc()
 
 
-def main() -> None:
+async def _serve() -> None:
     service = Service()
-    threading.Thread(target=_load, args=(service,), daemon=True).start()
-    uvicorn.run(create_app(service), host="0.0.0.0", port=8000)
+    config = uvicorn.Config(create_app(service), host="0.0.0.0", port=8000)
+    loader = asyncio.create_task(_load(service))
+    try:
+        await uvicorn.Server(config).serve()
+    finally:
+        if not loader.done():
+            loader.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await loader
+
+
+def main() -> None:
+    asyncio.run(_serve())
 
 
 if __name__ == "__main__":

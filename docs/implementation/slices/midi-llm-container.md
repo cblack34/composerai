@@ -109,10 +109,17 @@ GitHub issues are the WIP tracker and source of task-level detail.
 - Human-approved change: the image uses Python 3.14 and FastAPI. An invalid generate body is HTTP 422 and does not run the model. A blank prompt is that validation error.
 - Affected issues: #18
 
+### 2026-10-19 — Async service
+
+- Previous assumption or plan statement: the FastAPI handlers were synchronous, inference sat behind a thread lock, and a daemon thread loaded the checkpoint.
+- New evidence: the rest of the process is async and moves blocking work off the loop. A lock held by the request is released if that request is cancelled, so a second generation can enter the same model.
+- Human-approved change: the service handlers are async. Loading and inference run through `asyncio.to_thread`. One worker owns the model, so a cancelled request does not start a second generation. `/health` does not wait on inference.
+- Affected issues: #18
+
 ## Delivery record
 
 - **Outcome:** The `midi-llm` service returns one MIDI body for a text prompt. `generate_midi_from_text` archives that generation and writes the section file through ProjectStore. The music21 tool still works.
-- **Verification:** `uv run pytest`, 145 passed, after the Python 3.14 and FastAPI amendment. The running container is CPython 3.14.8. `GET /health` returned 200 body `ok`. A blank prompt returned 422. `POST` to `127.0.0.1:8001/generate` with `max_tokens` 64 returned 167 bytes starting with `MThd`. bfloat16 loaded on CPU. The weight file is in the `midi-llm-weights` volume and not in the image or the git tree. Issues [#18](https://github.com/cblack34/composerai/issues/18) and [#19](https://github.com/cblack34/composerai/issues/19).
+- **Verification:** `uv run pytest`, 157 passed, after the async service change. The recreated container is CPython 3.14.8. `GET /health` returned 503 while the checkpoint loaded, then 200 body `ok`. A blank prompt returned 422. `POST` to `127.0.0.1:8001/generate` with `max_tokens` 8 returned 43 bytes starting with `MThd`. bfloat16 loaded on CPU. The weight file is in the `midi-llm-weights` volume and not in the image or the git tree. Issues [#18](https://github.com/cblack34/composerai/issues/18) and [#19](https://github.com/cblack34/composerai/issues/19).
 - **Deviations:** None. The client sends the prompt only. Sampling defaults stay on the service. bfloat16 loaded on CPU.
 - **Unresolved gates or risks:** A full generation uses 2046 tokens and will be slow on CPU. Docker cannot use the M4 GPU. Continue and infill stay deferred.
 - **Final PR:** https://github.com/cblack34/composerai/pull/20
