@@ -12,6 +12,7 @@ services:
       COMPOSERAI_MODEL: "${COMPOSERAI_MODEL:-xai:grok-4.7}"
       COMPOSERAI_SEARCH_MODEL: "${COMPOSERAI_SEARCH_MODEL:-xai:grok-4.7}"
       COMPOSERAI_PROJECT_NAME: "${COMPOSERAI_PROJECT_NAME:-demo}"
+      COMPOSERAI_MIDI_LLM_URL: http://midi-llm:8000
       XAI_API_KEY: "${XAI_API_KEY:-}"
     volumes:
       - ./projects:/projects

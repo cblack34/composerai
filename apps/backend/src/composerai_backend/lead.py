@@ -9,10 +9,11 @@ from pydantic_ai import Agent, ModelMessage, RunContext, ToolReturnPart
 from pydantic_ai.capabilities import WebSearch
 from pydantic_ai.messages import TextContent, UserContent
 
-from composerai_midi import MidiModel, Music21MidiModel
+from composerai_midi import MidiModel, MidiResult, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
 
 from composerai_backend.feedback import FeedbackLibrary, FileFeedbackLibrary, GenerationNotFound
+from composerai_backend.midi_llm import HttpMidiLlmClient, MidiLlmClient, MidiLlmError
 from composerai_backend.paths import path_component, project_write_path, section_midi_path
 from composerai_backend.settings import Settings
 
@@ -22,6 +23,7 @@ class LeadDeps(BaseModel):
 
     store: Annotated[ProjectStore, SkipValidation]
     midi: Annotated[MidiModel, SkipValidation]
+    midi_llm: Annotated[MidiLlmClient, SkipValidation]
     library: Annotated[FeedbackLibrary, SkipValidation]
     project: str
     search_model: str
@@ -40,8 +42,9 @@ agent: Agent[LeadDeps, str] = Agent(
         "You are the songwriting lead. Plan one section at a time and save it as MIDI. "
         "Act only through tools. "
         "save_section_midi writes <project>/<section>/<file>.mid from a musical prompt. "
+        "generate_midi_from_text writes that file from a text prompt using midi-llm. "
         "Section and file are single path components. "
-        "When the user praises or rejects a section, call log_feedback with the generation id the save returned. "
+        "When the user praises or rejects a section, call log_feedback with the generation id. "
         "Do not invent a thumb. No thumb means neutral. "
         "The archive is not part of the project folder. "
         "list_files, read_file, and write_file use the project store. "
@@ -137,13 +140,63 @@ async def save_section_midi(
     }
 
 
+_MIDI_LLM_ID = "midi-llm"
+_MIDI_HEADER = b"MThd"
+
+
+@agent.tool
+async def generate_midi_from_text(
+    ctx: RunContext[LeadDeps],
+    section: str,
+    file: str,
+    prompt: str,
+    project: str | None = None,
+    model_id: str = _MIDI_LLM_ID,
+) -> dict[str, str] | str:
+    """Generate MIDI for one section with midi-llm and save <project>/<section>/<file>.mid.
+
+    prompt is the text given to the model. A blank prompt writes nothing.
+    model_id defaults to midi-llm. An unknown id writes nothing.
+    file is the stem with no suffix. project defaults to the current project.
+    """
+    text = prompt.strip()
+    if not text:
+        return "The prompt is blank."
+    if model_id != _MIDI_LLM_ID:
+        return "The model id is unknown."
+    chosen = ctx.deps.project if project is None else project
+    path = section_midi_path(chosen, section, file)
+    try:
+        data = await ctx.deps.midi_llm.generate(text)
+    except MidiLlmError:
+        return "The MIDI service failed."
+    if not data.startswith(_MIDI_HEADER):
+        return "The MIDI service did not return MIDI."
+    result = MidiResult(data=data, model_id=_MIDI_LLM_ID)
+    record = await ctx.deps.library.record_generation(
+        project_name=chosen,
+        section_name=section,
+        project_path=path,
+        user_intent=_user_intent(ctx.prompt),
+        prompt=text,
+        midi=result,
+        lead_model_id=ctx.model.model_id,
+    )
+    saved = await ctx.deps.store.write(path, result.data)
+    return {
+        "generation_id": str(record.id),
+        "project_id": str(record.project_id),
+        "path": saved.path,
+    }
+
+
 @agent.tool
 async def log_feedback(
     ctx: RunContext[LeadDeps],
     generation_id: UUID,
     value: Literal["up", "down"],
 ) -> str:
-    """Attach up or down to a generation id from save_section_midi.
+    """Attach up or down to a generation id from save_section_midi or generate_midi_from_text.
 
     An unknown id writes nothing. A later call records another thumb.
     """
@@ -169,7 +222,10 @@ def _saved_generations(messages: Sequence[ModelMessage]) -> list[tuple[str, str 
     seen: set[str] = set()
     for message in messages:
         for part in message.parts:
-            if not isinstance(part, ToolReturnPart) or part.tool_name != "save_section_midi":
+            if not isinstance(part, ToolReturnPart) or part.tool_name not in {
+                "save_section_midi",
+                "generate_midi_from_text",
+            }:
                 continue
             content = part.content
             if not isinstance(content, dict):
@@ -224,6 +280,7 @@ async def _main(prompt: str) -> None:
     deps = LeadDeps(
         store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
+        midi_llm=HttpMidiLlmClient(settings.midi_llm_url),
         library=FileFeedbackLibrary(settings.archive_root),
         project=settings.project_name,
         search_model=settings.search_model,

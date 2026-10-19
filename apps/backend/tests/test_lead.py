@@ -21,6 +21,7 @@ from pydantic_ai.native_tools import WebSearchTool
 
 from composerai_backend.feedback import FeedbackLibrary, FileFeedbackLibrary
 from composerai_backend.lead import LeadDeps, _main, agent, run_lead, search_agent
+from composerai_backend.midi_llm import HttpMidiLlmClient, MidiLlmError
 from composerai_midi import MidiModel, MidiResult, Music21MidiModel
 from composerai_store import FileContent, LocalProjectStore, PathRejected, ProjectEntry, ProjectStore
 
@@ -37,6 +38,24 @@ def _script(tool_name: str, args: Mapping[str, object]) -> FunctionModel:
 class _UnusedMidi:
     async def generate(self, section: str, prompt: str) -> MidiResult:
         raise AssertionError((section, prompt))
+
+
+class _IdleMidiLlm:
+    async def generate(self, prompt: str) -> bytes:
+        raise AssertionError(prompt)
+
+
+class _ScriptMidiLlm:
+    def __init__(self, data: bytes = b"", *, error: Exception | None = None) -> None:
+        self.calls: list[str] = []
+        self._data = data
+        self._error = error
+
+    async def generate(self, prompt: str) -> bytes:
+        self.calls.append(prompt)
+        if self._error is not None:
+            raise self._error
+        return self._data
 
 
 class _RecordingMidi:
@@ -113,6 +132,7 @@ async def test_save_section_midi_writes_standard_midi(
     deps = LeadDeps(
         store=recording,
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",
@@ -340,6 +360,7 @@ async def test_bad_section_does_not_create_a_file_at_the_mount_root(
     deps = LeadDeps(
         store=recording,
         midi=_UnusedMidi(),
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",
@@ -368,6 +389,7 @@ async def test_write_without_a_project_is_rejected(
     deps = LeadDeps(
         store=recording,
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",
@@ -428,7 +450,15 @@ async def test_web_search_returns_the_search_text_and_skips_a_blank_query(deps: 
     def search(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         names = {tool.name for tool in info.function_tools}
         assert names.isdisjoint(
-            {"list_files", "read_file", "write_file", "save_section_midi", "log_feedback", "web_search"}
+            {
+                "list_files",
+                "read_file",
+                "write_file",
+                "save_section_midi",
+                "generate_midi_from_text",
+                "log_feedback",
+                "web_search",
+            }
         )
         assert _native_web_search(info)
         part = messages[-1].parts[-1]
@@ -484,6 +514,7 @@ async def test_web_search_runs_on_the_deps_search_model(
     deps = LeadDeps(
         store=store,
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-3",
@@ -510,6 +541,7 @@ def test_lead_deps_reject_a_project_that_is_not_one_component() -> None:
         LeadDeps(
             store=object(),
             midi=object(),
+            midi_llm=object(),
             library=object(),
             project="..",
             search_model="xai:grok-4.7",
@@ -526,6 +558,7 @@ async def test_main_builds_the_lead_from_settings(
     monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
     monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "demo")
+    monkeypatch.setenv("COMPOSERAI_MIDI_LLM_URL", "http://midi-llm:8000")
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
     monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(archive))
     seen: dict[str, object] = {}
@@ -536,6 +569,7 @@ async def test_main_builds_the_lead_from_settings(
         seen["project"] = deps.project
         seen["search_model"] = deps.search_model
         seen["library"] = deps.library
+        seen["midi_llm"] = deps.midi_llm
         await deps.store.write("demo/verse-1/notes.txt", b"ok")
         return "saved"
 
@@ -544,6 +578,7 @@ async def test_main_builds_the_lead_from_settings(
     await _main("write a verse")
 
     library = seen.pop("library")
+    midi_llm = seen.pop("midi_llm")
     assert seen == {
         "prompt": "write a verse",
         "model": "xai:grok-4",
@@ -551,6 +586,8 @@ async def test_main_builds_the_lead_from_settings(
         "search_model": "xai:grok-3",
     }
     assert isinstance(library, FileFeedbackLibrary)
+    assert isinstance(midi_llm, HttpMidiLlmClient)
+    assert midi_llm.url == "http://midi-llm:8000"
     assert archive.is_dir()
     assert (project / "demo" / "verse-1" / "notes.txt").read_bytes() == b"ok"
 
@@ -593,6 +630,7 @@ async def test_save_archives_the_prompt_and_reuses_project_id(
     deps = LeadDeps(
         store=store,
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",
@@ -699,6 +737,7 @@ async def test_blank_midi_prompt_writes_neither_copy(
     deps = LeadDeps(
         store=store,
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",
@@ -729,6 +768,7 @@ async def test_a_failed_project_write_keeps_the_generation(
     deps = LeadDeps(
         store=_FailingStore(),
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",
@@ -784,3 +824,227 @@ async def test_user_intent_keeps_text_parts(
     empty_id = await run(None, "empty")
     assert (await _stored(archive_root, sequence_id))["user_intent"] == "Save a verse."
     assert (await _stored(archive_root, empty_id))["user_intent"] == ""
+
+
+class _ArchiveThenProject:
+    def __init__(self, inner: ProjectStore, archive_root: Path) -> None:
+        self._inner = inner
+        self._archive_root = archive_root
+        self.writes: list[str] = []
+
+    async def list(self, path: str) -> list[ProjectEntry]:
+        return await self._inner.list(path)
+
+    async def read(self, path: str) -> FileContent:
+        return await self._inner.read(path)
+
+    async def write(self, path: str, data: bytes) -> FileContent:
+        entries = await LocalProjectStore(self._archive_root).list("generations")
+        assert any(entry.path.endswith(".json") for entry in entries)
+        self.writes.append(path)
+        return await self._inner.write(path, data)
+
+
+async def _generate(
+    deps: LeadDeps,
+    *,
+    prompt: str = "a short verse",
+    section: str = "verse-1",
+    file: str = "sketch",
+    user: str = "Save a verse.",
+    model_name: str = "grok-test",
+    model_id: str | None = None,
+    project: str | None = None,
+) -> object:
+    seen: list[object] = []
+    args: dict[str, object] = {"section": section, "file": file, "prompt": prompt}
+    if model_id is not None:
+        args["model_id"] = model_id
+    if project is not None:
+        args["project"] = project
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(parts=[ToolCallPart("generate_midi_from_text", args)])
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        seen.append(part.content)
+        return ModelResponse(parts=[TextPart(content="done")])
+
+    with agent.override(model=FunctionModel(respond, model_name=model_name)):
+        reply = await run_lead(user, deps)
+    assert len(seen) == 1
+    content = seen[0]
+    if isinstance(content, dict) and isinstance(content.get("generation_id"), str):
+        assert reply == f"done\n\ngeneration_id: {content['generation_id']} ({content['path']})"
+    else:
+        assert reply == "done"
+    return content
+
+
+def _midi_llm_deps(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+    client: _ScriptMidiLlm,
+    midi: MidiModel | None = None,
+) -> LeadDeps:
+    return LeadDeps(
+        store=store,
+        midi=_RecordingMidi() if midi is None else midi,
+        midi_llm=client,
+        library=library,
+        project="demo",
+        search_model="xai:grok-4.7",
+    )
+
+
+@pytest.mark.parametrize("prompt", ["", " ", "\n\t"])
+async def test_blank_generate_prompt_writes_nothing_and_does_not_call(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+    project_root: Path,
+    archive_root: Path,
+    prompt: str,
+) -> None:
+    client = _ScriptMidiLlm(b"MThd")
+    midi = _RecordingMidi()
+    deps = _midi_llm_deps(store, library, client, midi)
+    assert await _generate(deps, prompt=prompt) == "The prompt is blank."
+    assert client.calls == []
+    assert midi.calls == []
+    assert list(project_root.iterdir()) == []
+    assert await LocalProjectStore(archive_root).list(".") == []
+
+
+async def test_unknown_midi_model_writes_nothing_and_does_not_call(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+    project_root: Path,
+    archive_root: Path,
+) -> None:
+    client = _ScriptMidiLlm(b"MThd")
+    midi = _RecordingMidi()
+    deps = _midi_llm_deps(store, library, client, midi)
+    assert await _generate(deps, model_id="other") == "The model id is unknown."
+    assert client.calls == []
+    assert midi.calls == []
+    assert list(project_root.iterdir()) == []
+    assert await LocalProjectStore(archive_root).list(".") == []
+
+
+async def test_down_midi_service_writes_nothing(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+    project_root: Path,
+    archive_root: Path,
+) -> None:
+    client = _ScriptMidiLlm(error=MidiLlmError("down"))
+    deps = _midi_llm_deps(store, library, client)
+    assert await _generate(deps) == "The MIDI service failed."
+    assert client.calls == ["a short verse"]
+    assert list(project_root.iterdir()) == []
+    assert await LocalProjectStore(archive_root).list(".") == []
+
+
+async def test_non_midi_body_writes_nothing(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+    project_root: Path,
+    archive_root: Path,
+) -> None:
+    client = _ScriptMidiLlm(b"not-midi")
+    deps = _midi_llm_deps(store, library, client)
+    assert await _generate(deps) == "The MIDI service did not return MIDI."
+    assert client.calls == ["a short verse"]
+    assert list(project_root.iterdir()) == []
+    assert await LocalProjectStore(archive_root).list(".") == []
+
+
+async def test_generate_midi_from_text_archives_then_writes(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+    archive_root: Path,
+) -> None:
+    body = b"MThd\x00\x00"
+    client = _ScriptMidiLlm(body)
+    recording = _ArchiveThenProject(store, archive_root)
+    midi = _RecordingMidi()
+    deps = LeadDeps(
+        store=recording,
+        midi=midi,
+        midi_llm=client,
+        library=library,
+        project="demo",
+        search_model="xai:grok-4.7",
+    )
+    content = await _generate(deps, prompt="  a short verse  ", user="Save a verse.")
+    assert isinstance(content, dict)
+    generation_id = _canonical(content["generation_id"])
+    project_id = _canonical(content["project_id"])
+    assert content["path"] == "demo/verse-1/sketch.mid"
+    assert client.calls == ["a short verse"]
+    assert midi.calls == []
+    assert recording.writes == ["demo/verse-1/sketch.mid"]
+    assert (await store.read("demo/verse-1/sketch.mid")).data == body
+    stored = await _stored(archive_root, generation_id)
+    assert stored["prompt"] == "a short verse"
+    assert stored["user_intent"] == "Save a verse."
+    assert stored["midi_model_id"] == "midi-llm"
+    assert stored["lead_model_id"] == "function:grok-test"
+    assert stored["session_id"] is None
+    assert stored["section_id"] is None
+    assert stored["refs"] == {}
+    assert stored["project_id"] == project_id
+    assert stored["project_path"] == "demo/verse-1/sketch.mid"
+    archive = LocalProjectStore(archive_root)
+    assert (await archive.read(f"generations/{generation_id}.mid")).data == body
+    assert await _log(deps, generation_id, "up", "That verse works.") == "Logged up."
+    assert await library.latest_thumb(UUID(generation_id)) == "up"
+
+
+async def test_generate_midi_from_text_honors_an_explicit_project(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+) -> None:
+    body = b"MThd\x00"
+    client = _ScriptMidiLlm(body)
+    deps = _midi_llm_deps(store, library, client)
+    content = await _generate(deps, section="chorus", file="hook", project="other", prompt="a chorus hook")
+    assert isinstance(content, dict)
+    assert content["path"] == "other/chorus/hook.mid"
+    assert client.calls == ["a chorus hook"]
+    assert (await store.read("other/chorus/hook.mid")).data == body
+
+
+async def test_reply_adds_the_path_when_generate_wrote_only_the_id(
+    store: ProjectStore,
+    library: FeedbackLibrary,
+) -> None:
+    deps = _midi_llm_deps(store, library, _ScriptMidiLlm(b"MThd\x00"))
+    written: list[str] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "generate_midi_from_text",
+                        {"section": "verse-1", "file": "sketch", "prompt": "a short verse"},
+                    )
+                ]
+            )
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        assert isinstance(part.content, dict)
+        text = f"Saved.\n\ngeneration_id: {part.content['generation_id']}"
+        written.append(
+            f"{text}\n\ngeneration_id: {part.content['generation_id']} ({part.content['path']})"
+        )
+        return ModelResponse(parts=[TextPart(content=text)])
+
+    with agent.override(model=FunctionModel(respond)):
+        reply = await run_lead("Save a verse.", deps)
+
+    assert written
+    assert reply == written[0]
+    assert reply.endswith(" (demo/verse-1/sketch.mid)")

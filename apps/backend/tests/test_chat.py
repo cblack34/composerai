@@ -13,6 +13,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from composerai_backend.api import ChatRequest, ChatResponse, app
 from composerai_backend.feedback import FileFeedbackLibrary
 from composerai_backend.lead import LeadDeps, agent
+from composerai_backend.midi_llm import HttpMidiLlmClient
 from composerai_midi import Music21MidiModel
 from composerai_store import LocalProjectStore
 
@@ -103,6 +104,7 @@ async def test_chat_builds_the_lead_from_settings(
     chat_env: Path,
 ) -> None:
     monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
+    monkeypatch.setenv("COMPOSERAI_MIDI_LLM_URL", "http://midi-llm:8000")
     seen: dict[str, object] = {}
 
     async def fake(
@@ -118,6 +120,7 @@ async def test_chat_builds_the_lead_from_settings(
         seen["search_model"] = deps.search_model
         seen["store"] = deps.store
         seen["midi"] = deps.midi
+        seen["midi_llm"] = deps.midi_llm
         seen["library"] = deps.library
         seen["history"] = message_history
         return "ok"
@@ -146,6 +149,9 @@ async def test_chat_builds_the_lead_from_settings(
     await store.write("demo/verse-1/notes.txt", b"ok")
     assert (chat_env / "demo" / "verse-1" / "notes.txt").read_bytes() == b"ok"
     assert isinstance(midi, Music21MidiModel)
+    midi_llm = seen["midi_llm"]
+    assert isinstance(midi_llm, HttpMidiLlmClient)
+    assert midi_llm.url == "http://midi-llm:8000"
     assert isinstance(seen["library"], FileFeedbackLibrary)
     assert (chat_env.parent / "archive").is_dir()
     history = seen["history"]

@@ -9,6 +9,7 @@ from composerai_backend.paths import path_component
 DEFAULT_MODEL = "xai:grok-4.7"
 DEFAULT_SEARCH_MODEL = "xai:grok-4.7"
 DEFAULT_PROJECT = "demo"
+DEFAULT_MIDI_LLM_URL = "http://127.0.0.1:8001"
 
 
 class Settings(BaseSettings):
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
     project_root: Path
     archive_root: Path
     project_name: str = DEFAULT_PROJECT
+    midi_llm_url: str = DEFAULT_MIDI_LLM_URL
 
     @field_validator("project_name")
     @classmethod

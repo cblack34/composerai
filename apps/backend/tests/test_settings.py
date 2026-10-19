@@ -4,7 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from composerai_backend import _run
-from composerai_backend.settings import DEFAULT_MODEL, DEFAULT_PROJECT, DEFAULT_SEARCH_MODEL, Settings
+from composerai_backend.settings import (
+    DEFAULT_MIDI_LLM_URL,
+    DEFAULT_MODEL,
+    DEFAULT_PROJECT,
+    DEFAULT_SEARCH_MODEL,
+    Settings,
+)
 
 
 def test_settings_use_defaults_when_only_the_roots_are_set(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -16,6 +22,7 @@ def test_settings_use_defaults_when_only_the_roots_are_set(monkeypatch: pytest.M
     assert settings.model == DEFAULT_MODEL
     assert settings.search_model == DEFAULT_SEARCH_MODEL
     assert settings.project_name == DEFAULT_PROJECT
+    assert settings.midi_llm_url == DEFAULT_MIDI_LLM_URL
     assert settings.project_root == Path("/projects")
     assert settings.archive_root == Path("/archive")
 
@@ -29,6 +36,7 @@ def test_settings_read_the_process_environment(
     monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
     monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "other")
+    monkeypatch.setenv("COMPOSERAI_MIDI_LLM_URL", "http://midi-llm:8000")
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
     monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(archive))
 
@@ -37,13 +45,19 @@ def test_settings_read_the_process_environment(
     assert settings.model == "xai:grok-4"
     assert settings.search_model == "xai:grok-3"
     assert settings.project_name == "other"
+    assert settings.midi_llm_url == "http://midi-llm:8000"
     assert settings.project_root == project
     assert settings.archive_root == archive
 
 
 @pytest.mark.parametrize(
     "name",
-    ["COMPOSERAI_MODEL", "COMPOSERAI_SEARCH_MODEL", "COMPOSERAI_PROJECT_NAME"],
+    [
+        "COMPOSERAI_MODEL",
+        "COMPOSERAI_SEARCH_MODEL",
+        "COMPOSERAI_PROJECT_NAME",
+        "COMPOSERAI_MIDI_LLM_URL",
+    ],
 )
 def test_empty_values_fall_back_to_defaults(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", "/projects")
@@ -55,6 +69,7 @@ def test_empty_values_fall_back_to_defaults(monkeypatch: pytest.MonkeyPatch, nam
     assert settings.model == DEFAULT_MODEL
     assert settings.search_model == DEFAULT_SEARCH_MODEL
     assert settings.project_name == DEFAULT_PROJECT
+    assert settings.midi_llm_url == DEFAULT_MIDI_LLM_URL
 
 
 def test_settings_reject_a_project_name_that_is_not_one_component(
