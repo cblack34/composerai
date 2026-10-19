@@ -6,7 +6,15 @@ from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
-from pydantic_ai import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
+from pydantic_ai import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from pydantic_ai.messages import CachePoint, TextContent
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.native_tools import WebSearchTool
@@ -88,7 +96,9 @@ async def _save(
     assert len(seen) == 1
     content = seen[0]
     if isinstance(content, dict) and isinstance(content.get("generation_id"), str):
-        assert reply == f"done\n\ngeneration_id: {content['generation_id']}"
+        assert reply == (
+            f"done\n\ngeneration_id: {content['generation_id']} ({content['path']})"
+        )
     else:
         assert reply == "done"
     return content
@@ -116,6 +126,7 @@ async def test_save_section_midi_writes_standard_midi(
         result = await run_lead("Save a verse.", deps)
 
     assert result.startswith("done\n\ngeneration_id: ")
+    assert result.endswith(" (demo/verse-1/sketch.mid)")
     assert midi.calls == [("verse-1", "a short verse")]
     assert recording.writes == ["demo/verse-1/sketch.mid"]
     saved = await store.read("demo/verse-1/sketch.mid")
@@ -126,6 +137,7 @@ async def test_save_section_midi_writes_standard_midi(
 async def test_save_section_midi_honors_an_explicit_project(
     deps: LeadDeps,
     store: ProjectStore,
+    archive_root: Path,
 ) -> None:
     with agent.override(
         model=_script(
@@ -138,6 +150,109 @@ async def test_save_section_midi_honors_an_explicit_project(
     saved = await store.read("other/chorus/hook.mid")
     assert saved.path == "other/chorus/hook.mid"
     assert saved.data.startswith(b"MThd")
+    archive = LocalProjectStore(archive_root)
+    entries = [entry for entry in await archive.list("generations") if entry.path.endswith(".json")]
+    assert len(entries) == 1
+    stored = json.loads((await archive.read(entries[0].path)).data)
+    assert stored["project_name"] == "other"
+    assert stored["project_path"] == "other/chorus/hook.mid"
+
+
+async def test_reply_names_each_save_in_the_turn(deps: LeadDeps) -> None:
+    seen: list[str] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        saves = [
+            part
+            for message in messages
+            for part in message.parts
+            if isinstance(part, ToolReturnPart) and part.tool_name == "save_section_midi"
+        ]
+        if not saves:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "verse-1", "file": "a", "prompt": "a verse"},
+                    ),
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "chorus-1", "file": "b", "prompt": "a chorus"},
+                    ),
+                ]
+            )
+        for part in saves:
+            assert isinstance(part.content, dict)
+            seen.append(f"generation_id: {part.content['generation_id']} ({part.content['path']})")
+        return ModelResponse(parts=[TextPart(content="Saved both sections.")])
+
+    with agent.override(model=FunctionModel(respond)):
+        reply = await run_lead("Save both sections.", deps)
+
+    assert reply == "Saved both sections.\n\n" + "\n".join(seen)
+    assert seen[0].endswith("(demo/verse-1/a.mid)")
+    assert seen[1].endswith("(demo/chorus-1/b.mid)")
+
+
+async def test_reply_leaves_a_generation_id_the_model_already_wrote(deps: LeadDeps) -> None:
+    written: list[str] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "verse-1", "file": "sketch", "prompt": "a short verse"},
+                    )
+                ]
+            )
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        assert isinstance(part.content, dict)
+        text = f"Saved.\n\ngeneration_id: {part.content['generation_id']}"
+        written.append(text)
+        return ModelResponse(parts=[TextPart(content=text)])
+
+    with agent.override(model=FunctionModel(respond)):
+        reply = await run_lead("Save a verse.", deps)
+
+    assert written
+    assert reply == written[0]
+
+
+async def test_reply_ignores_a_save_from_earlier_history(deps: LeadDeps) -> None:
+    old = "01a1522e-8d68-765d-a072-45eba86339eb"
+    history = [
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    "save_section_midi",
+                    {"section": "verse-1", "file": "a", "prompt": "a verse"},
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="save_section_midi",
+                    content={
+                        "generation_id": old,
+                        "project_id": old,
+                        "path": "demo/verse-1/a.mid",
+                    },
+                )
+            ]
+        ),
+    ]
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(parts=[TextPart(content="Nothing new.")])
+
+    with agent.override(model=FunctionModel(respond)):
+        reply = await run_lead("What next?", deps, message_history=history)
+
+    assert reply == "Nothing new."
 
 
 @pytest.mark.parametrize("section", ["..", "", "bad/name"])
@@ -438,7 +553,7 @@ async def test_save_archives_the_prompt_and_reuses_project_id(
     assert stored["project_id"] == project_id
     assert stored["midi_model_id"] == "music21-stub"
     assert stored["output_metadata"] == {}
-    assert stored["lead_model_id"] == "grok-test"
+    assert stored["lead_model_id"] == "function:grok-test"
     assert stored["project_path"] == "demo/verse-1/sketch.mid"
     project_bytes = (await store.read("demo/verse-1/sketch.mid")).data
     archive = LocalProjectStore(archive_root)

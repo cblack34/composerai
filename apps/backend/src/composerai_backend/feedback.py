@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -100,6 +101,7 @@ class FileFeedbackLibrary(FeedbackLibrary):
         directory = Path(root)
         directory.mkdir(parents=True, exist_ok=True)
         self._store: ProjectStore = LocalProjectStore(directory)
+        self._project_lock = asyncio.Lock()
 
     async def record_generation(
         self,
@@ -174,14 +176,15 @@ class FileFeedbackLibrary(FeedbackLibrary):
         return FeedbackRecord.model_validate_json(content.data)
 
     async def _project_id(self, project_name: str) -> UUID:
-        path = f"project-names/{path_component(project_name)}"
-        try:
-            existing = await self._store.read(path)
-        except FileNotFoundError:
-            created = uuid.uuid7()
-            await self._store.write(path, str(created).encode())
-            return created
-        return UUID(existing.data.decode())
+        path = f"project-names/{project_name}"
+        async with self._project_lock:
+            try:
+                existing = await self._store.read(path)
+            except FileNotFoundError:
+                created = uuid.uuid7()
+                await self._store.write(path, str(created).encode())
+                return created
+            return UUID(existing.data.decode())
 
     async def _require_generation(self, generation_id: UUID) -> None:
         try:

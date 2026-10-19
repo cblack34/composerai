@@ -1,7 +1,9 @@
+import asyncio
 import json
 import uuid
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
 
@@ -154,6 +156,64 @@ async def test_up_then_down_leaves_down(
 async def test_no_thumb_is_neutral(library: FeedbackLibrary) -> None:
     record = await _record(library)
     assert await library.latest_thumb(record.id) is None
+
+
+async def test_latest_thumb_stays_with_its_generation(library: FeedbackLibrary) -> None:
+    first = await _record(library)
+    second = await _record(
+        library,
+        section_name="chorus",
+        project_path="demo/chorus/hook.mid",
+        prompt="write a chorus",
+    )
+    untouched = await _record(
+        library,
+        section_name="bridge",
+        project_path="demo/bridge/turn.mid",
+        prompt="write a bridge",
+    )
+    await library.add_thumb(first.id, "up")
+    await library.add_thumb(second.id, "down")
+
+    assert await library.latest_thumb(first.id) == "up"
+    assert await library.latest_thumb(second.id) == "down"
+    assert await library.latest_thumb(untouched.id) is None
+
+
+class _HoldProjectNameRead:
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+
+    async def list(self, path: str) -> list[object]:
+        return []
+
+    async def read(self, path: str) -> SimpleNamespace:
+        if path.startswith("project-names/"):
+            await asyncio.sleep(0.05)
+        try:
+            data = self.files[path]
+        except KeyError as exc:
+            raise FileNotFoundError(path) from exc
+        return SimpleNamespace(data=data, path=path)
+
+    async def write(self, path: str, data: bytes) -> SimpleNamespace:
+        self.files[path] = data
+        return SimpleNamespace(data=data, path=path)
+
+
+async def test_overlapping_records_share_one_project_id(tmp_path: Path) -> None:
+    library = FileFeedbackLibrary(tmp_path / "archive")
+    library._store = _HoldProjectNameRead()
+    first, second = await asyncio.gather(
+        _record(library, project_path="demo/verse-1/a.mid"),
+        _record(
+            library,
+            section_name="chorus",
+            project_path="demo/chorus/b.mid",
+            prompt="write a chorus",
+        ),
+    )
+    assert first.project_id == second.project_id
 
 
 async def test_unknown_feedback_kind_keeps_extra_fields(

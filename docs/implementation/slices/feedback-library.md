@@ -95,15 +95,15 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 ## Amendments
 
-None.
+- 2026-10-19: `run_lead` appends one `generation_id: <uuid> (<project path>)` line per save in that turn when the model text omitted the id. `POST /api/chat` is still `{prompt, messages}` in and `{reply}` out. The line is part of the assistant text the browser sends back, so a later turn can attach a thumb to the right section.
 
 ## Delivery record
 
 Complete once when the final PR is ready for human merge. Do not use this section for WIP status.
 
 - **Outcome:** `save_section_midi` records a UUID v7 generation in the archive, then writes the working MIDI copy. `log_feedback` attaches `up` or `down`. No thumb means neutral. The newest thumb wins.
-- **Verification:** `uv run pytest` on CPython 3.14.7, 106 passed. A live chat through `http://127.0.0.1:5173/api/chat` returned 200, saved `projects/demo/verse-1/live-thumb.mid`, and wrote the generation, the thumb, and the project id under `archive/`. Deleting that project file left the archive. Evidence is on #15 and #16.
-- **Deviations:** `composerai-midi` declares `pydantic` because `MidiResult` is a Pydantic model. `refs` values are UUIDs.
+- **Verification:** `uv run pytest` on CPython 3.14.7, 106 passed. A live chat through `http://127.0.0.1:5173/api/chat` returned 200, saved `projects/demo/verse-1/live-thumb.mid`, and wrote the generation, the thumb, and the project id under `archive/`. Deleting that project file left the archive. Evidence is on #15 and #16. Review of #17, before merge: `uv run pytest`, 120 passed.
+- **Deviations:** `composerai-midi` declares `pydantic` because `MidiResult` is a Pydantic model. `refs` values are UUIDs. `run_lead` adds the generation id and path to `{reply}` when the model text left them out. See Amendments.
 - **Unresolved gates or risks:** No CI. Retrieval, ranking, comments, sessions, a training run, and the MIDI model container stay out of this slice.
 - **Final PR:** https://github.com/cblack34/composerai/pull/17
 - **Merge state:** In review. Agents do not merge to `main`.

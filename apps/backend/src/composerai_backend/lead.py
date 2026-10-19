@@ -127,10 +127,7 @@ async def save_section_midi(
         user_intent=_user_intent(ctx.prompt),
         prompt=text,
         midi=result,
-        lead_model_id=ctx.model.model_name,
-        session_id=None,
-        section_id=None,
-        refs={},
+        lead_model_id=ctx.model.model_id,
     )
     saved = await ctx.deps.store.write(path, result.data)
     return {
@@ -167,8 +164,9 @@ async def web_search(ctx: RunContext[LeadDeps], query: str) -> str:
     return result.output
 
 
-def _generation_ids(messages: Sequence[ModelMessage]) -> list[str]:
-    found: list[str] = []
+def _saved_generations(messages: Sequence[ModelMessage]) -> list[tuple[str, str | None]]:
+    found: list[tuple[str, str | None]] = []
+    seen: set[str] = set()
     for message in messages:
         for part in message.parts:
             if not isinstance(part, ToolReturnPart) or part.tool_name != "save_section_midi":
@@ -177,20 +175,25 @@ def _generation_ids(messages: Sequence[ModelMessage]) -> list[str]:
             if not isinstance(content, dict):
                 continue
             generation_id = content.get("generation_id")
-            if isinstance(generation_id, str) and generation_id not in found:
-                found.append(generation_id)
+            if not isinstance(generation_id, str) or generation_id in seen:
+                continue
+            seen.add(generation_id)
+            path = content.get("path")
+            found.append((generation_id, path if isinstance(path, str) and path else None))
     return found
 
 
 def _reply_with_generation_ids(output: str, messages: Sequence[ModelMessage]) -> str:
     missing = [
-        generation_id
-        for generation_id in _generation_ids(messages)
+        f"generation_id: {generation_id}"
+        if path is None
+        else f"generation_id: {generation_id} ({path})"
+        for generation_id, path in _saved_generations(messages)
         if f"generation_id: {generation_id}" not in output
     ]
     if not missing:
         return output
-    trailer = "\n".join(f"generation_id: {generation_id}" for generation_id in missing)
+    trailer = "\n".join(missing)
     if output.strip():
         return f"{output.rstrip()}\n\n{trailer}"
     return trailer

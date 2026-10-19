@@ -173,6 +173,7 @@ async def test_follow_up_feedback_uses_the_generation_id_in_the_reply(chat_env: 
     reply = first.json()["reply"]
     assert isinstance(reply, str)
     assert reply.startswith("Saved verse-1.\n\ngeneration_id: ")
+    assert reply.endswith(" (demo/verse-1/sketch.mid)")
     found = re.search(r"generation_id: ([0-9a-f-]{36})", reply)
     assert found is not None
     generation_id = found.group(1)

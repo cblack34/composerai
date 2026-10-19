@@ -125,8 +125,11 @@ async def test_probe_does_not_write_when_the_project_name_is_rejected(
     assert list(project.iterdir()) == []
 
 
-@pytest.mark.parametrize("kind", ["equal", "child", "symlink", "relative"])
-def test_settings_reject_an_archive_inside_the_project(
+@pytest.mark.parametrize(
+    "kind",
+    ["equal", "child", "symlink", "relative", "parent", "parent-symlink"],
+)
+def test_settings_reject_nested_project_and_archive_roots(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     kind: str,
@@ -142,6 +145,16 @@ def test_settings_reject_an_archive_inside_the_project(
         target.mkdir(parents=True)
         archive = tmp_path / "link"
         archive.symlink_to(target, target_is_directory=True)
+    elif kind == "parent":
+        archive = tmp_path / "archive"
+        project = archive / "generations"
+        project.mkdir(parents=True)
+    elif kind == "parent-symlink":
+        archive = tmp_path / "archive"
+        target = archive / "generations"
+        target.mkdir(parents=True)
+        project = tmp_path / "project-link"
+        project.symlink_to(target, target_is_directory=True)
     else:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", "projects")
@@ -156,12 +169,18 @@ def test_settings_reject_an_archive_inside_the_project(
         Settings()
 
 
-def test_settings_allow_an_archive_whose_name_shares_the_project_prefix(
+@pytest.mark.parametrize(
+    ("project_name", "archive_name"),
+    [("projects", "projects-archive"), ("archive-projects", "archive")],
+)
+def test_settings_allow_roots_whose_names_share_a_prefix(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    project_name: str,
+    archive_name: str,
 ) -> None:
-    project = tmp_path / "projects"
-    archive = tmp_path / "projects-archive"
+    project = tmp_path / project_name
+    archive = tmp_path / archive_name
     project.mkdir()
     monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
     monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(archive))
