@@ -123,21 +123,14 @@ async def save_section_midi(
     chosen = ctx.deps.project if project is None else project
     path = section_midi_path(chosen, section, file)
     result = await ctx.deps.midi.generate(section, text)
-    record = await ctx.deps.library.record_generation(
+    return await _archive_and_write(
+        ctx,
         project_name=chosen,
         section_name=section,
-        project_path=path,
-        user_intent=_user_intent(ctx.prompt),
+        path=path,
         prompt=text,
         midi=result,
-        lead_model_id=ctx.model.model_id,
     )
-    saved = await ctx.deps.store.write(path, result.data)
-    return {
-        "generation_id": str(record.id),
-        "project_id": str(record.project_id),
-        "path": saved.path,
-    }
 
 
 _MIDI_LLM_ID = "midi-llm"
@@ -172,17 +165,35 @@ async def generate_midi_from_text(
         return "The MIDI service failed."
     if not data.startswith(_MIDI_HEADER):
         return "The MIDI service did not return MIDI."
-    result = MidiResult(data=data, model_id=_MIDI_LLM_ID)
-    record = await ctx.deps.library.record_generation(
+    return await _archive_and_write(
+        ctx,
         project_name=chosen,
         section_name=section,
+        path=path,
+        prompt=text,
+        midi=MidiResult(data=data, model_id=_MIDI_LLM_ID),
+    )
+
+
+async def _archive_and_write(
+    ctx: RunContext[LeadDeps],
+    *,
+    project_name: str,
+    section_name: str,
+    path: str,
+    prompt: str,
+    midi: MidiResult,
+) -> dict[str, str]:
+    record = await ctx.deps.library.record_generation(
+        project_name=project_name,
+        section_name=section_name,
         project_path=path,
         user_intent=_user_intent(ctx.prompt),
-        prompt=text,
-        midi=result,
+        prompt=prompt,
+        midi=midi,
         lead_model_id=ctx.model.model_id,
     )
-    saved = await ctx.deps.store.write(path, result.data)
+    saved = await ctx.deps.store.write(path, midi.data)
     return {
         "generation_id": str(record.id),
         "project_id": str(record.project_id),
