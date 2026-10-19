@@ -1,7 +1,9 @@
 import threading
 import traceback
 
-from midi_llm_http.server import Service, serve
+import uvicorn
+
+from midi_llm_http.server import Service, create_app
 
 
 def _load(service: Service) -> None:
@@ -16,7 +18,7 @@ def _load(service: Service) -> None:
 def main() -> None:
     service = Service()
     threading.Thread(target=_load, args=(service,), daemon=True).start()
-    serve(service)
+    uvicorn.run(create_app(service), host="0.0.0.0", port=8000)
 
 
 if __name__ == "__main__":

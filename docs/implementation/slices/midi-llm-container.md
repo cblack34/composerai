@@ -65,7 +65,7 @@ The seed brief names a Dockerized MIDI model. The in-process music21 stub alread
 
 The service listens on the Compose network and is also published on loopback port 8001 so a host can call it directly. The backend process keeps using port 8000. Inside the network the backend calls `http://midi-llm:8000`. Chat startup does not wait for the model to finish loading. A down service fails the new tool closed.
 
-The image uses Python 3.11 and a CPU torch wheel. It does not install the upstream CUDA and vLLM lockfile. It clones the model code so the upstream license file stays in the image, and it does not edit those files. Anticipation (Apache-2.0) decodes tokens to MIDI. There is no FluidSynth and no MP3.
+The image uses Python 3.14 and a CPU torch wheel. FastAPI validates the generate body. It does not install the upstream CUDA and vLLM lockfile. It clones the model code so the upstream license file stays in the image, and it does not edit those files. Anticipation (Apache-2.0) decodes tokens to MIDI. There is no FluidSynth and no MP3.
 
 Defaults match the checkpoint card: temperature 1.0, top_p 0.98, max tokens 2046, one sequence. The live check uses a short token cap.
 
@@ -102,12 +102,17 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 ## Amendments
 
-None.
+### 2026-10-19 — Python 3.14 and FastAPI
+
+- Previous assumption or plan statement: the image used Python 3.11 and a stdlib HTTP server. A rejected generate body was HTTP 400.
+- New evidence: torch 2.14.1 publishes a CPU wheel for CPython 3.14 on linux/arm64. The maintainer asked for FastAPI so request validation can grow.
+- Human-approved change: the image uses Python 3.14 and FastAPI. An invalid generate body is HTTP 422 and does not run the model. A blank prompt is that validation error.
+- Affected issues: #18
 
 ## Delivery record
 
 - **Outcome:** The `midi-llm` service returns one MIDI body for a text prompt. `generate_midi_from_text` archives that generation and writes the section file through ProjectStore. The music21 tool still works.
-- **Verification:** `uv run pytest`, 145 passed, on `c80f315`. Live `POST` to `127.0.0.1:8001/generate` with `max_tokens` 64 returned a body starting with `MThd`. The weight file is in the `midi-llm-weights` volume and not in the image or the git tree. Issues [#18](https://github.com/cblack34/composerai/issues/18) and [#19](https://github.com/cblack34/composerai/issues/19).
+- **Verification:** `uv run pytest`, 145 passed, after the Python 3.14 and FastAPI amendment. The running container is CPython 3.14.8. `GET /health` returned 200 body `ok`. A blank prompt returned 422. `POST` to `127.0.0.1:8001/generate` with `max_tokens` 64 returned 167 bytes starting with `MThd`. bfloat16 loaded on CPU. The weight file is in the `midi-llm-weights` volume and not in the image or the git tree. Issues [#18](https://github.com/cblack34/composerai/issues/18) and [#19](https://github.com/cblack34/composerai/issues/19).
 - **Deviations:** None. The client sends the prompt only. Sampling defaults stay on the service. bfloat16 loaded on CPU.
 - **Unresolved gates or risks:** A full generation uses 2046 tokens and will be slow on CPU. Docker cannot use the M4 GPU. Continue and infill stay deferred.
 - **Final PR:** https://github.com/cblack34/composerai/pull/20

@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.14-slim-trixie
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -9,11 +9,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
-# The PyPI torch wheel is the CUDA build.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
-    && python -c "import torch; assert torch.version.cuda is None"
+# The PyPI torch wheel is the CUDA build. 2.14.1 publishes a cp314 CPU wheel.
+RUN pip install --no-cache-dir torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu \
+    && python -c "import sys, torch; assert sys.version_info[:2] == (3, 14); assert torch.version.cuda is None"
 
 RUN pip install --no-cache-dir \
+        fastapi==0.146.0 \
+        uvicorn==0.54.0 \
         transformers \
         huggingface-hub \
         mido \

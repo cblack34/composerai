@@ -38,6 +38,6 @@ Not a hard ban on new packages. Soft rule:
 
 ## MIDI-LLM
 
-The `slseanwu/MIDI-LLM_Llama-3.2-1B` checkpoint and its code use the Llama 3.2 Community License, approved 2026-10-19 for this local container. Weights are not committed. Keep the upstream license file in the image.
+The `slseanwu/MIDI-LLM_Llama-3.2-1B` checkpoint and its code use the Llama 3.2 Community License, approved 2026-10-19 for this local container. Weights are not committed. Keep the upstream license file in the image. The container runs Python 3.14. Its HTTP service uses FastAPI and Uvicorn, the same packages the backend already depends on.
 
 Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.

@@ -1,7 +1,8 @@
-import json
 import traceback
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Protocol
+
+from fastapi import FastAPI, HTTPException, Response
+from pydantic import BaseModel, field_validator
 
 DEFAULT_TEMPERATURE = 1.0
 DEFAULT_TOP_P = 0.98
@@ -30,92 +31,38 @@ class Service:
         return generator(prompt, temperature, top_p, max_tokens)
 
 
-def _float_field(payload: dict[str, object], key: str, default: float) -> float | None:
-    if key not in payload:
-        return default
-    value = payload[key]
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    return float(value)
+class GenerateBody(BaseModel):
+    prompt: str
+    temperature: float = DEFAULT_TEMPERATURE
+    top_p: float = DEFAULT_TOP_P
+    max_tokens: int = DEFAULT_MAX_TOKENS
+
+    @field_validator("prompt")
+    @classmethod
+    def _prompt_has_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("blank prompt")
+        return value
 
 
-def _int_field(payload: dict[str, object], key: str, default: int) -> int | None:
-    if key not in payload:
-        return default
-    value = payload[key]
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value
+def create_app(service: Service) -> FastAPI:
+    app = FastAPI()
 
+    @app.get("/health")
+    def health() -> Response:
+        if not service.ready:
+            raise HTTPException(status_code=503, detail="loading")
+        return Response(content=b"ok", media_type="text/plain")
 
-def make_server(service: Service, host: str, port: int) -> HTTPServer:
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            if self.path.split("?", 1)[0] != "/health":
-                self._send(404, b"not found", "text/plain")
-                return
-            if service.ready:
-                self._send(200, b"ok", "text/plain")
-                return
-            self._send(503, b"loading", "text/plain")
+    @app.post("/generate")
+    def generate(body: GenerateBody) -> Response:
+        if not service.ready:
+            raise HTTPException(status_code=503, detail="loading")
+        try:
+            data = service.generate(body.prompt, body.temperature, body.top_p, body.max_tokens)
+        except Exception as exc:
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail="generation failed") from exc
+        return Response(content=data, media_type="audio/midi")
 
-        def do_POST(self) -> None:
-            if self.path.split("?", 1)[0] != "/generate":
-                self._send(404, b"not found", "text/plain")
-                return
-            payload = self._payload()
-            if payload is None:
-                self._send(400, b"invalid json", "text/plain")
-                return
-            prompt = payload.get("prompt")
-            if not isinstance(prompt, str):
-                self._send(400, b"invalid prompt", "text/plain")
-                return
-            if not prompt.strip():
-                self._send(400, b"blank prompt", "text/plain")
-                return
-            temperature = _float_field(payload, "temperature", DEFAULT_TEMPERATURE)
-            top_p = _float_field(payload, "top_p", DEFAULT_TOP_P)
-            max_tokens = _int_field(payload, "max_tokens", DEFAULT_MAX_TOKENS)
-            if temperature is None or top_p is None or max_tokens is None:
-                self._send(400, b"invalid generation parameters", "text/plain")
-                return
-            if not service.ready:
-                self._send(503, b"loading", "text/plain")
-                return
-            try:
-                body = service.generate(prompt, temperature, top_p, max_tokens)
-            except Exception:
-                traceback.print_exc()
-                self._send(500, b"generation failed", "text/plain")
-                return
-            self._send(200, body, "audio/midi")
-
-        def _payload(self) -> dict[str, object] | None:
-            raw_length = self.headers.get("Content-Length")
-            if raw_length is None:
-                return None
-            try:
-                length = int(raw_length)
-            except ValueError:
-                return None
-            try:
-                payload = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return None
-            if not isinstance(payload, dict):
-                return None
-            return payload
-
-        def _send(self, status: int, body: bytes, content_type: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-    return HTTPServer((host, port), Handler)
-
-
-def serve(service: Service, host: str = "0.0.0.0", port: int = 8000) -> None:
-    make_server(service, host, port).serve_forever()
+    return app
