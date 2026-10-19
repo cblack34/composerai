@@ -20,6 +20,7 @@ def _hide_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
         "COMPOSERAI_PROJECT_ROOT",
         "COMPOSERAI_PROJECT_NAME",
         "COMPOSERAI_ARCHIVE_ROOT",
+        "COMPOSERAI_MIDI_LLM_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -51,11 +52,17 @@ def library(archive_root: Path) -> FeedbackLibrary:
     return FileFeedbackLibrary(archive_root)
 
 
+class _IdleMidiLlm:
+    async def generate(self, prompt: str) -> bytes:
+        raise AssertionError(prompt)
+
+
 @pytest.fixture
 def deps(store: ProjectStore, midi: MidiModel, library: FeedbackLibrary) -> LeadDeps:
     return LeadDeps(
         store=store,
         midi=midi,
+        midi_llm=_IdleMidiLlm(),
         library=library,
         project="demo",
         search_model="xai:grok-4.7",

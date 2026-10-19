@@ -12,6 +12,7 @@ services:
       COMPOSERAI_MODEL: "${COMPOSERAI_MODEL:-xai:grok-4.7}"
       COMPOSERAI_SEARCH_MODEL: "${COMPOSERAI_SEARCH_MODEL:-xai:grok-4.7}"
       COMPOSERAI_PROJECT_NAME: "${COMPOSERAI_PROJECT_NAME:-demo}"
+      COMPOSERAI_MIDI_LLM_URL: http://midi-llm:8000
       XAI_API_KEY: "${XAI_API_KEY:-}"
     volumes:
       - ./projects:/projects
@@ -25,3 +26,16 @@ services:
       - "127.0.0.1:5173:5173"
     depends_on:
       - backend
+  midi-llm:
+    build:
+      context: services/midi-llm
+    # Published on loopback. Weights download into the named volume, not the image.
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      HF_HOME: /cache/huggingface
+    volumes:
+      - midi-llm-weights:/cache/huggingface
+
+volumes:
+  midi-llm-weights:

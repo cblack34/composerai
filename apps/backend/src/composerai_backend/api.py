@@ -10,6 +10,7 @@ from composerai_store import LocalProjectStore
 
 from composerai_backend.feedback import FileFeedbackLibrary
 from composerai_backend.lead import LeadDeps, run_lead
+from composerai_backend.midi_llm import HttpMidiLlmClient
 from composerai_backend.settings import Settings
 
 
@@ -48,6 +49,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
     deps = LeadDeps(
         store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
+        midi_llm=HttpMidiLlmClient(settings.midi_llm_url),
         library=FileFeedbackLibrary(settings.archive_root),
         project=settings.project_name,
         search_model=settings.search_model,
