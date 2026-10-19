@@ -194,7 +194,7 @@ async def test_reply_names_each_save_in_the_turn(deps: LeadDeps) -> None:
     assert seen[1].endswith("(demo/chorus-1/b.mid)")
 
 
-async def test_reply_leaves_a_generation_id_the_model_already_wrote(deps: LeadDeps) -> None:
+async def test_reply_adds_the_path_when_the_model_wrote_only_the_id(deps: LeadDeps) -> None:
     written: list[str] = []
 
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
@@ -211,6 +211,33 @@ async def test_reply_leaves_a_generation_id_the_model_already_wrote(deps: LeadDe
         assert isinstance(part, ToolReturnPart)
         assert isinstance(part.content, dict)
         text = f"Saved.\n\ngeneration_id: {part.content['generation_id']}"
+        written.append(f"{text}\n\ngeneration_id: {part.content['generation_id']} ({part.content['path']})")
+        return ModelResponse(parts=[TextPart(content=text)])
+
+    with agent.override(model=FunctionModel(respond)):
+        reply = await run_lead("Save a verse.", deps)
+
+    assert written
+    assert reply == written[0]
+
+
+async def test_reply_leaves_a_mapped_generation_line_unchanged(deps: LeadDeps) -> None:
+    written: list[str] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "verse-1", "file": "sketch", "prompt": "a short verse"},
+                    )
+                ]
+            )
+        part = messages[-1].parts[-1]
+        assert isinstance(part, ToolReturnPart)
+        assert isinstance(part.content, dict)
+        text = f"Saved.\n\ngeneration_id: {part.content['generation_id']} ({part.content['path']})"
         written.append(text)
         return ModelResponse(parts=[TextPart(content=text)])
 
@@ -219,6 +246,52 @@ async def test_reply_leaves_a_generation_id_the_model_already_wrote(deps: LeadDe
 
     assert written
     assert reply == written[0]
+
+
+async def test_reply_keeps_both_paths_when_the_model_wrote_only_ids(deps: LeadDeps) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        saves = [
+            part
+            for message in messages
+            for part in message.parts
+            if isinstance(part, ToolReturnPart) and part.tool_name == "save_section_midi"
+        ]
+        if not saves:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "verse-1", "file": "a", "prompt": "a verse"},
+                    ),
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "chorus-1", "file": "b", "prompt": "a chorus"},
+                    ),
+                ]
+            )
+        bare: list[str] = []
+        for part in saves:
+            assert isinstance(part.content, dict)
+            generation_id = part.content["generation_id"]
+            path = part.content["path"]
+            assert isinstance(generation_id, str)
+            assert isinstance(path, str)
+            seen.append((generation_id, path))
+            bare.append(f"generation_id: {generation_id}")
+        return ModelResponse(parts=[TextPart(content="Saved both.\n\n" + "\n".join(bare))])
+
+    with agent.override(model=FunctionModel(respond)):
+        reply = await run_lead("Save both sections.", deps)
+
+    mapped = "\n".join(f"generation_id: {generation_id} ({path})" for generation_id, path in seen)
+    bare = "\n".join(f"generation_id: {generation_id}" for generation_id, _path in seen)
+    assert reply == f"Saved both.\n\n{bare}\n\n{mapped}"
+    assert [path for _generation_id, path in seen] == [
+        "demo/verse-1/a.mid",
+        "demo/chorus-1/b.mid",
+    ]
 
 
 async def test_reply_ignores_a_save_from_earlier_history(deps: LeadDeps) -> None:

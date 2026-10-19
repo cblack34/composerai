@@ -95,7 +95,7 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 ## Amendments
 
-- 2026-10-19: `run_lead` appends one `generation_id: <uuid> (<project path>)` line per save in that turn when the model text omitted the id. `POST /api/chat` is still `{prompt, messages}` in and `{reply}` out. The line is part of the assistant text the browser sends back, so a later turn can attach a thumb to the right section.
+- 2026-10-19: `run_lead` appends one `generation_id: <uuid> (<project path>)` line per save in that turn when the model text omitted that full line. A bare id does not stand in for the path. `POST /api/chat` is still `{prompt, messages}` in and `{reply}` out. The line is part of the assistant text the browser sends back, so a later turn can attach a thumb to the right section.
 
 ## Delivery record
 

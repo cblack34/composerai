@@ -183,14 +183,18 @@ def _saved_generations(messages: Sequence[ModelMessage]) -> list[tuple[str, str 
     return found
 
 
+def _generation_line(generation_id: str, path: str | None) -> str:
+    if path is None:
+        return f"generation_id: {generation_id}"
+    return f"generation_id: {generation_id} ({path})"
+
+
 def _reply_with_generation_ids(output: str, messages: Sequence[ModelMessage]) -> str:
-    missing = [
-        f"generation_id: {generation_id}"
-        if path is None
-        else f"generation_id: {generation_id} ({path})"
-        for generation_id, path in _saved_generations(messages)
-        if f"generation_id: {generation_id}" not in output
-    ]
+    missing: list[str] = []
+    for generation_id, path in _saved_generations(messages):
+        line = _generation_line(generation_id, path)
+        if line not in output:
+            missing.append(line)
     if not missing:
         return output
     trailer = "\n".join(missing)
