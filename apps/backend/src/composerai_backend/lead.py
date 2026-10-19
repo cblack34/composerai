@@ -5,6 +5,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, SkipValidation, field_validator
 from pydantic_ai import Agent, ModelMessage, RunContext
+from pydantic_ai.capabilities import WebSearch
 
 from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
@@ -19,6 +20,7 @@ class LeadDeps(BaseModel):
     store: Annotated[ProjectStore, SkipValidation]
     midi: Annotated[MidiModel, SkipValidation]
     project: str
+    search_model: str
 
     @field_validator("project")
     @classmethod
@@ -36,8 +38,18 @@ agent: Agent[LeadDeps, str] = Agent(
         "save_section_midi writes <project>/<section>/<file>.mid. "
         "Section and file are single path components. "
         "list_files, read_file, and write_file use the project store. "
-        "A write path must start with a project folder, never a file at the mount root."
+        "A write path must start with a project folder, never a file at the mount root. "
+        "web_search answers a query from the web and does not write a file."
     ),
+)
+
+
+search_agent: Agent[None, str] = Agent(
+    name="search",
+    deps_type=type(None),
+    defer_model_check=True,
+    capabilities=[WebSearch()],
+    instructions="Answer the query using web search.",
 )
 
 
@@ -86,6 +98,16 @@ async def save_section_midi(
     return saved.path
 
 
+@agent.tool
+async def web_search(ctx: RunContext[LeadDeps], query: str) -> str:
+    """Search the web for a query and return the answer."""
+    text = query.strip()
+    if not text:
+        return "The query is blank."
+    result = await search_agent.run(text, model=ctx.deps.search_model, usage=ctx.usage)
+    return result.output
+
+
 async def run_lead(
     prompt: str,
     deps: LeadDeps,
@@ -108,6 +130,7 @@ async def _main(prompt: str) -> None:
         store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
         project=settings.project_name,
+        search_model=settings.search_model,
     )
     print(await run_lead(prompt, deps, model=settings.model))
 

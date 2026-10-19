@@ -13,7 +13,12 @@ models.ALLOW_MODEL_REQUESTS = False
 @pytest.fixture(autouse=True)
 def _hide_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("XAI_API_KEY", raising=False)
-    for name in ("COMPOSERAI_MODEL", "COMPOSERAI_PROJECT_ROOT", "COMPOSERAI_PROJECT_NAME"):
+    for name in (
+        "COMPOSERAI_MODEL",
+        "COMPOSERAI_SEARCH_MODEL",
+        "COMPOSERAI_PROJECT_ROOT",
+        "COMPOSERAI_PROJECT_NAME",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -36,4 +41,4 @@ def midi() -> MidiModel:
 
 @pytest.fixture
 def deps(store: ProjectStore, midi: MidiModel) -> LeadDeps:
-    return LeadDeps(store=store, midi=midi, project="demo")
+    return LeadDeps(store=store, midi=midi, project="demo", search_model="xai:grok-4.7")

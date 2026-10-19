@@ -5,7 +5,7 @@ import uvicorn
 from composerai_store import LocalProjectStore
 
 from composerai_backend.api import app
-from composerai_backend.lead import agent
+from composerai_backend.lead import agent, search_agent
 from composerai_backend.paths import probe_path
 from composerai_backend.settings import Settings
 
@@ -17,7 +17,7 @@ _PORT = 8000
 
 async def _serve() -> None:
     config = uvicorn.Config(app, host=_HOST, port=_PORT)
-    async with agent:
+    async with agent, search_agent:
         await uvicorn.Server(config).serve()
 
 

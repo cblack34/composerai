@@ -90,6 +90,7 @@ async def test_chat_builds_the_lead_from_settings(
     monkeypatch: pytest.MonkeyPatch,
     chat_env: Path,
 ) -> None:
+    monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
     seen: dict[str, object] = {}
 
     async def fake(
@@ -102,6 +103,7 @@ async def test_chat_builds_the_lead_from_settings(
         seen["prompt"] = prompt
         seen["model"] = model
         seen["project"] = deps.project
+        seen["search_model"] = deps.search_model
         seen["store"] = deps.store
         seen["midi"] = deps.midi
         seen["history"] = message_history
@@ -123,6 +125,7 @@ async def test_chat_builds_the_lead_from_settings(
     assert response.json() == {"reply": "ok"}
     assert seen["prompt"] == "Save a verse."
     assert seen["model"] == "xai:grok-4"
+    assert seen["search_model"] == "xai:grok-3"
     assert seen["project"] == "demo"
     store = seen["store"]
     midi = seen["midi"]
