@@ -84,9 +84,14 @@ async def _save(
         return ModelResponse(parts=[TextPart(content="done")])
 
     with agent.override(model=FunctionModel(respond, model_name=model_name)):
-        assert await run_lead(user, deps) == "done"
+        reply = await run_lead(user, deps)
     assert len(seen) == 1
-    return seen[0]
+    content = seen[0]
+    if isinstance(content, dict) and isinstance(content.get("generation_id"), str):
+        assert reply == f"done\n\ngeneration_id: {content['generation_id']}"
+    else:
+        assert reply == "done"
+    return content
 
 
 async def test_save_section_midi_writes_standard_midi(
@@ -110,7 +115,7 @@ async def test_save_section_midi_writes_standard_midi(
     ):
         result = await run_lead("Save a verse.", deps)
 
-    assert result == "done"
+    assert result.startswith("done\n\ngeneration_id: ")
     assert midi.calls == [("verse-1", "a short verse")]
     assert recording.writes == ["demo/verse-1/sketch.mid"]
     saved = await store.read("demo/verse-1/sketch.mid")

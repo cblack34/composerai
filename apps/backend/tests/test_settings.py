@@ -24,11 +24,12 @@ def test_settings_read_the_process_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    project = tmp_path / "projects"
     archive = tmp_path / "archive"
     monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
     monkeypatch.setenv("COMPOSERAI_SEARCH_MODEL", "xai:grok-3")
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "other")
-    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
     monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(archive))
 
     settings = Settings()
@@ -36,7 +37,7 @@ def test_settings_read_the_process_environment(
     assert settings.model == "xai:grok-4"
     assert settings.search_model == "xai:grok-3"
     assert settings.project_name == "other"
-    assert settings.project_root == tmp_path
+    assert settings.project_root == project
     assert settings.archive_root == archive
 
 
@@ -89,7 +90,9 @@ async def test_probe_writes_the_mount_file_for_the_configured_project(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
+    project = tmp_path / "projects"
+    project.mkdir()
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
     monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(tmp_path / "archive"))
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "demo")
     served = False
@@ -97,7 +100,7 @@ async def test_probe_writes_the_mount_file_for_the_configured_project(
     async def serve() -> None:
         nonlocal served
         served = True
-        assert (tmp_path / "demo" / "verse-1" / "mounted.txt").read_bytes() == b"mounted\n"
+        assert (project / "demo" / "verse-1" / "mounted.txt").read_bytes() == b"mounted\n"
 
     monkeypatch.setattr("composerai_backend._serve", serve)
 
@@ -110,11 +113,60 @@ async def test_probe_does_not_write_when_the_project_name_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
+    project = tmp_path / "projects"
+    project.mkdir()
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
     monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(tmp_path / "archive"))
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", ".")
 
     with pytest.raises(ValidationError):
         await _run()
 
-    assert list(tmp_path.iterdir()) == []
+    assert list(project.iterdir()) == []
+
+
+@pytest.mark.parametrize("kind", ["equal", "child", "symlink", "relative"])
+def test_settings_reject_an_archive_inside_the_project(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    project = tmp_path / "projects"
+    project.mkdir()
+    if kind == "equal":
+        archive: Path = project
+    elif kind == "child":
+        archive = project / "demo" / "archive"
+    elif kind == "symlink":
+        target = project / "demo" / "archive"
+        target.mkdir(parents=True)
+        archive = tmp_path / "link"
+        archive.symlink_to(target, target_is_directory=True)
+    else:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", "projects")
+        monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", "projects/demo/../archive")
+        with pytest.raises(ValidationError):
+            Settings()
+        return
+
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(archive))
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_settings_allow_an_archive_whose_name_shares_the_project_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "projects"
+    archive = tmp_path / "projects-archive"
+    project.mkdir()
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(archive))
+
+    settings = Settings()
+
+    assert settings.project_root == project
+    assert settings.archive_root == archive

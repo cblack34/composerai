@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, SkipValidation, field_validator
-from pydantic_ai import Agent, ModelMessage, RunContext
+from pydantic_ai import Agent, ModelMessage, RunContext, ToolReturnPart
 from pydantic_ai.capabilities import WebSearch
 from pydantic_ai.messages import TextContent, UserContent
 
@@ -167,6 +167,35 @@ async def web_search(ctx: RunContext[LeadDeps], query: str) -> str:
     return result.output
 
 
+def _generation_ids(messages: Sequence[ModelMessage]) -> list[str]:
+    found: list[str] = []
+    for message in messages:
+        for part in message.parts:
+            if not isinstance(part, ToolReturnPart) or part.tool_name != "save_section_midi":
+                continue
+            content = part.content
+            if not isinstance(content, dict):
+                continue
+            generation_id = content.get("generation_id")
+            if isinstance(generation_id, str) and generation_id not in found:
+                found.append(generation_id)
+    return found
+
+
+def _reply_with_generation_ids(output: str, messages: Sequence[ModelMessage]) -> str:
+    missing = [
+        generation_id
+        for generation_id in _generation_ids(messages)
+        if f"generation_id: {generation_id}" not in output
+    ]
+    if not missing:
+        return output
+    trailer = "\n".join(f"generation_id: {generation_id}" for generation_id in missing)
+    if output.strip():
+        return f"{output.rstrip()}\n\n{trailer}"
+    return trailer
+
+
 async def run_lead(
     prompt: str,
     deps: LeadDeps,
@@ -180,7 +209,7 @@ async def run_lead(
         model=model,
         message_history=message_history,
     )
-    return result.output
+    return _reply_with_generation_ids(result.output, result.new_messages())
 
 
 async def _main(prompt: str) -> None:
