@@ -5,6 +5,7 @@ description = "Async MIDI model interface"
 requires-python = ">=3.14"
 dependencies = [
     "music21==10.5.0",
+    "pydantic>=2.14.1",
 ]
 
 [build-system]

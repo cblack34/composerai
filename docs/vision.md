@@ -21,7 +21,7 @@ A local, VS Code-inspired songwriting workspace. A lead agent helps compose by s
 - Retrieval of past prompts/outputs.
 - Lyrics parsing for note durations.
 - Multiple MIDI models with lead selection.
-- Preference data for later fine-tuning.
+- A retained generation and thumb library is in the seed. Retrieval, ranking, comments, and running a fine-tune stay deferred.
 
 ### Architecture
 - File API backed by ProjectStore.

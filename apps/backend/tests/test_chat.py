@@ -1,13 +1,17 @@
 from collections.abc import Sequence
 from pathlib import Path
 
+import re
+from uuid import UUID
+
 import httpx2
 import pytest
 from pydantic_ai import ModelMessage
-from pydantic_ai.messages import ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from composerai_backend.api import app
+from composerai_backend.api import ChatRequest, ChatResponse, app
+from composerai_backend.feedback import FileFeedbackLibrary
 from composerai_backend.lead import LeadDeps, agent
 from composerai_midi import Music21MidiModel
 from composerai_store import LocalProjectStore
@@ -15,10 +19,13 @@ from composerai_store import LocalProjectStore
 
 @pytest.fixture(autouse=True)
 def chat_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(tmp_path))
+    project = tmp_path / "projects"
+    project.mkdir()
+    monkeypatch.setenv("COMPOSERAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("COMPOSERAI_ARCHIVE_ROOT", str(tmp_path / "archive"))
     monkeypatch.setenv("COMPOSERAI_PROJECT_NAME", "demo")
     monkeypatch.setenv("COMPOSERAI_MODEL", "xai:grok-4")
-    return tmp_path
+    return project
 
 
 async def _post(payload: dict[str, object]) -> httpx2.Response:
@@ -36,6 +43,11 @@ def _text(messages: Sequence[ModelMessage]) -> list[str]:
                 assert isinstance(content, str)
                 seen.append(content)
     return seen
+
+
+def test_chat_contract_is_prompt_messages_and_reply() -> None:
+    assert set(ChatRequest.model_fields) == {"prompt", "messages"}
+    assert set(ChatResponse.model_fields) == {"reply"}
 
 
 async def test_chat_returns_the_lead_reply() -> None:
@@ -106,6 +118,7 @@ async def test_chat_builds_the_lead_from_settings(
         seen["search_model"] = deps.search_model
         seen["store"] = deps.store
         seen["midi"] = deps.midi
+        seen["library"] = deps.library
         seen["history"] = message_history
         return "ok"
 
@@ -133,6 +146,65 @@ async def test_chat_builds_the_lead_from_settings(
     await store.write("demo/verse-1/notes.txt", b"ok")
     assert (chat_env / "demo" / "verse-1" / "notes.txt").read_bytes() == b"ok"
     assert isinstance(midi, Music21MidiModel)
+    assert isinstance(seen["library"], FileFeedbackLibrary)
+    assert (chat_env.parent / "archive").is_dir()
     history = seen["history"]
     assert isinstance(history, list)
     assert _text(history) == ["Hi.", "Hello."]
+
+
+async def test_follow_up_feedback_uses_the_generation_id_in_the_reply(chat_env: Path) -> None:
+    def save(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        "save_section_midi",
+                        {"section": "verse-1", "file": "sketch", "prompt": "a short verse"},
+                    )
+                ]
+            )
+        return ModelResponse(parts=[TextPart(content="Saved verse-1.")])
+
+    with agent.override(model=FunctionModel(save)):
+        first = await _post({"prompt": "Save a verse.", "messages": []})
+
+    assert first.status_code == 200
+    reply = first.json()["reply"]
+    assert isinstance(reply, str)
+    assert reply.startswith("Saved verse-1.\n\ngeneration_id: ")
+    assert reply.endswith(" (demo/verse-1/sketch.mid)")
+    found = re.search(r"generation_id: ([0-9a-f-]{36})", reply)
+    assert found is not None
+    generation_id = found.group(1)
+
+    def thumb(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if any(isinstance(part, ToolReturnPart) for message in messages for part in message.parts):
+            return ModelResponse(parts=[TextPart(content="Logged up.")])
+        text = _text(messages)
+        match = re.search(r"generation_id: ([0-9a-f-]{36})", "\n".join(text))
+        assert match is not None
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    "log_feedback",
+                    {"generation_id": match.group(1), "value": "up"},
+                )
+            ]
+        )
+
+    with agent.override(model=FunctionModel(thumb)):
+        second = await _post(
+            {
+                "prompt": "I like that verse.",
+                "messages": [
+                    {"role": "user", "content": "Save a verse."},
+                    {"role": "assistant", "content": reply},
+                ],
+            }
+        )
+
+    assert second.status_code == 200
+    assert second.json() == {"reply": "Logged up."}
+    library = FileFeedbackLibrary(chat_env.parent / "archive")
+    assert await library.latest_thumb(UUID(generation_id)) == "up"

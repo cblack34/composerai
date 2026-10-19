@@ -8,6 +8,7 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, Text
 from composerai_midi import Music21MidiModel
 from composerai_store import LocalProjectStore
 
+from composerai_backend.feedback import FileFeedbackLibrary
 from composerai_backend.lead import LeadDeps, run_lead
 from composerai_backend.settings import Settings
 
@@ -47,6 +48,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
     deps = LeadDeps(
         store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
+        library=FileFeedbackLibrary(settings.archive_root),
         project=settings.project_name,
         search_model=settings.search_model,
     )
