@@ -90,7 +90,7 @@ GitHub issues are the WIP tracker and source of task-level detail.
 
 - **Topology:** Direct pull request to `main`.
 - **Branch or spine:** `slice/feedback-library`
-- **Final PR:** Opened when the issues are complete.
+- **Final PR:** https://github.com/cblack34/composerai/pull/17
 - **Human merge gate:** Only the human may physically merge the final PR to `main`. Agents must stop when it is ready.
 
 ## Amendments
@@ -105,5 +105,5 @@ Complete once when the final PR is ready for human merge. Do not use this sectio
 - **Verification:** `uv run pytest` on CPython 3.14.7, 106 passed. A live chat through `http://127.0.0.1:5173/api/chat` returned 200, saved `projects/demo/verse-1/live-thumb.mid`, and wrote the generation, the thumb, and the project id under `archive/`. Deleting that project file left the archive. Evidence is on #15 and #16.
 - **Deviations:** `composerai-midi` declares `pydantic` because `MidiResult` is a Pydantic model. `refs` values are UUIDs.
 - **Unresolved gates or risks:** No CI. Retrieval, ranking, comments, sessions, a training run, and the MIDI model container stay out of this slice.
-- **Final PR:**
+- **Final PR:** https://github.com/cblack34/composerai/pull/17
 - **Merge state:** In review. Agents do not merge to `main`.
