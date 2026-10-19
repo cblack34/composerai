@@ -25,3 +25,16 @@ services:
       - "127.0.0.1:5173:5173"
     depends_on:
       - backend
+  midi-llm:
+    build:
+      context: services/midi-llm
+    # Published on loopback. Weights download into the named volume, not the image.
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      HF_HOME: /cache/huggingface
+    volumes:
+      - midi-llm-weights:/cache/huggingface
+
+volumes:
+  midi-llm-weights:

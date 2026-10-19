@@ -35,3 +35,9 @@ Not a hard ban on new packages. Soft rule:
 - Call out any new runtime or significant dev dependency in the PR.
 - If it is unclear whether a package meets the license or maintenance criteria, ask before adding it.
 - Do not add a dependency for a one-off need that the standard library or an existing dependency already covers.
+
+## MIDI-LLM
+
+The `slseanwu/MIDI-LLM_Llama-3.2-1B` checkpoint and its code use the Llama 3.2 Community License, approved 2026-10-19 for this local container. Weights are not committed. Keep the upstream license file in the image.
+
+Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.
