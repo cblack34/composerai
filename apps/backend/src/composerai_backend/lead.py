@@ -1,15 +1,18 @@
 import asyncio
 import sys
 from collections.abc import Sequence
-from typing import Annotated
+from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, SkipValidation, field_validator
 from pydantic_ai import Agent, ModelMessage, RunContext
 from pydantic_ai.capabilities import WebSearch
+from pydantic_ai.messages import TextContent, UserContent
 
 from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
 
+from composerai_backend.feedback import FeedbackLibrary, FileFeedbackLibrary, GenerationNotFound
 from composerai_backend.paths import path_component, project_write_path, section_midi_path
 from composerai_backend.settings import Settings
 
@@ -19,6 +22,7 @@ class LeadDeps(BaseModel):
 
     store: Annotated[ProjectStore, SkipValidation]
     midi: Annotated[MidiModel, SkipValidation]
+    library: Annotated[FeedbackLibrary, SkipValidation]
     project: str
     search_model: str
 
@@ -35,8 +39,11 @@ agent: Agent[LeadDeps, str] = Agent(
     instructions=(
         "You are the songwriting lead. Plan one section at a time and save it as MIDI. "
         "Act only through tools. "
-        "save_section_midi writes <project>/<section>/<file>.mid from a prompt. "
+        "save_section_midi writes <project>/<section>/<file>.mid from a musical prompt. "
         "Section and file are single path components. "
+        "When the user praises or rejects a section, call log_feedback with the generation id the save returned. "
+        "Do not invent a thumb. No thumb means neutral. "
+        "The archive is not part of the project folder. "
         "list_files, read_file, and write_file use the project store. "
         "A write path must start with a project folder, never a file at the mount root. "
         "web_search answers a query from the web and does not write a file."
@@ -80,6 +87,20 @@ async def write_file(ctx: RunContext[LeadDeps], path: str, content: str) -> str:
     return saved.path
 
 
+def _user_intent(prompt: str | Sequence[UserContent] | None) -> str:
+    if prompt is None:
+        return ""
+    if isinstance(prompt, str):
+        return prompt
+    texts: list[str] = []
+    for part in prompt:
+        if isinstance(part, str):
+            texts.append(part)
+        elif isinstance(part, TextContent):
+            texts.append(part.content)
+    return "".join(texts)
+
+
 @agent.tool
 async def save_section_midi(
     ctx: RunContext[LeadDeps],
@@ -87,17 +108,53 @@ async def save_section_midi(
     file: str,
     prompt: str,
     project: str | None = None,
-) -> str:
+) -> dict[str, str] | str:
     """Generate MIDI for one section and save <project>/<section>/<file>.mid.
 
-    prompt is given to the MIDI model. file is the stem with no suffix.
-    project defaults to the current project.
+    prompt is the musical prompt given to the MIDI model. A blank prompt writes nothing.
+    file is the stem with no suffix. project defaults to the current project.
     """
+    text = prompt.strip()
+    if not text:
+        return "The prompt is blank."
     chosen = ctx.deps.project if project is None else project
     path = section_midi_path(chosen, section, file)
-    result = await ctx.deps.midi.generate(section, prompt)
+    result = await ctx.deps.midi.generate(section, text)
+    record = await ctx.deps.library.record_generation(
+        project_name=chosen,
+        section_name=section,
+        project_path=path,
+        user_intent=_user_intent(ctx.prompt),
+        prompt=text,
+        midi=result,
+        lead_model_id=ctx.model.model_name,
+        session_id=None,
+        section_id=None,
+        refs={},
+    )
     saved = await ctx.deps.store.write(path, result.data)
-    return saved.path
+    return {
+        "generation_id": str(record.id),
+        "project_id": str(record.project_id),
+        "path": saved.path,
+    }
+
+
+@agent.tool
+async def log_feedback(
+    ctx: RunContext[LeadDeps],
+    generation_id: UUID,
+    value: Literal["up", "down"],
+) -> str:
+    """Attach up or down to a generation id from save_section_midi.
+
+    An unknown id writes nothing. A later call records another thumb.
+    """
+    try:
+        await ctx.deps.library.add_thumb(generation_id, value)
+    except GenerationNotFound:
+        return "No generation was found. Nothing was written."
+    return f"Logged {value}."
 
 
 @agent.tool
@@ -131,6 +188,7 @@ async def _main(prompt: str) -> None:
     deps = LeadDeps(
         store=LocalProjectStore(settings.project_root),
         midi=Music21MidiModel(),
+        library=FileFeedbackLibrary(settings.archive_root),
         project=settings.project_name,
         search_model=settings.search_model,
     )

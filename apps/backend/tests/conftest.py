@@ -3,6 +3,7 @@ from pathlib import Path
 import pydantic_ai.models as models
 import pytest
 
+from composerai_backend.feedback import FeedbackLibrary, FileFeedbackLibrary
 from composerai_backend.lead import LeadDeps
 from composerai_midi import MidiModel, Music21MidiModel
 from composerai_store import LocalProjectStore, ProjectStore
@@ -18,6 +19,7 @@ def _hide_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
         "COMPOSERAI_SEARCH_MODEL",
         "COMPOSERAI_PROJECT_ROOT",
         "COMPOSERAI_PROJECT_NAME",
+        "COMPOSERAI_ARCHIVE_ROOT",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -40,5 +42,21 @@ def midi() -> MidiModel:
 
 
 @pytest.fixture
-def deps(store: ProjectStore, midi: MidiModel) -> LeadDeps:
-    return LeadDeps(store=store, midi=midi, project="demo", search_model="xai:grok-4.7")
+def archive_root(tmp_path: Path) -> Path:
+    return tmp_path / "archive"
+
+
+@pytest.fixture
+def library(archive_root: Path) -> FeedbackLibrary:
+    return FileFeedbackLibrary(archive_root)
+
+
+@pytest.fixture
+def deps(store: ProjectStore, midi: MidiModel, library: FeedbackLibrary) -> LeadDeps:
+    return LeadDeps(
+        store=store,
+        midi=midi,
+        library=library,
+        project="demo",
+        search_model="xai:grok-4.7",
+    )

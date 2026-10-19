@@ -2,9 +2,11 @@ import json
 import uuid
 from datetime import timedelta
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from composerai_backend.feedback import (
     FeedbackLibrary,
@@ -16,14 +18,11 @@ from composerai_midi import MidiResult
 from composerai_store import LocalProjectStore, PathRejected
 
 
-@pytest.fixture
-def archive_root(tmp_path: Path) -> Path:
-    return tmp_path / "archive"
-
-
-@pytest.fixture
-def library(archive_root: Path) -> FeedbackLibrary:
-    return FileFeedbackLibrary(archive_root)
+def test_file_library_creates_a_missing_archive_root(tmp_path: Path) -> None:
+    root = tmp_path / "missing" / "archive"
+    FileFeedbackLibrary(root)
+    FileFeedbackLibrary(root)
+    assert root.is_dir()
 
 
 async def _record(
@@ -39,7 +38,7 @@ async def _record(
     lead_model_id: str | None = None,
     session_id: UUID | None = None,
     section_id: UUID | None = None,
-    refs: dict[str, str] | None = None,
+    refs: dict[str, UUID] | None = None,
 ) -> GenerationRecord:
     return await library.record_generation(
         project_name=project_name,
@@ -106,19 +105,25 @@ async def test_record_generation_reuses_project_id_and_stores_prompt_and_midi(
 
     session_id = uuid.uuid7()
     section_id = uuid.uuid7()
+    take = uuid.uuid7()
     explicit = await _record(
         library,
         section_name="bridge",
         session_id=session_id,
         section_id=section_id,
-        refs={"take": "later"},
+        refs={"take": take},
         lead_model_id="xai:grok-4.7",
     )
     assert explicit.project_id == first.project_id
     assert explicit.session_id == session_id
     assert explicit.section_id == section_id
-    assert explicit.refs == {"take": "later"}
+    assert explicit.refs == {"take": take}
     assert explicit.lead_model_id == "xai:grok-4.7"
+    stored_explicit = json.loads((await archive.read(f"generations/{explicit.id}.json")).data)
+    assert stored_explicit["refs"] == {"take": str(take)}
+
+    with pytest.raises(ValidationError):
+        await _record(library, refs=cast(dict[str, UUID], {"take": "later"}))
 
 
 async def test_up_then_down_leaves_down(

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     model: str = DEFAULT_MODEL
     search_model: str = DEFAULT_SEARCH_MODEL
     project_root: Path
+    archive_root: Path
     project_name: str = DEFAULT_PROJECT
 
     @field_validator("project_name")

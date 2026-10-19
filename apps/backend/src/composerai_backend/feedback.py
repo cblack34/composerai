@@ -20,7 +20,7 @@ class GenerationRecord(BaseModel):
     project_id: UUID
     session_id: UUID | None = None
     section_id: UUID | None = None
-    refs: dict[str, str] = {}
+    refs: dict[str, UUID] = {}
     project_name: str
     section_name: str
     project_path: str
@@ -61,7 +61,7 @@ class FeedbackLibrary(Protocol):
         lead_model_id: str | None = None,
         session_id: UUID | None = None,
         section_id: UUID | None = None,
-        refs: Mapping[str, str] | None = None,
+        refs: Mapping[str, UUID] | None = None,
     ) -> GenerationRecord: ...
 
     async def add_thumb(
@@ -98,7 +98,7 @@ def _thumb_value(record: FeedbackRecord) -> Literal["up", "down"] | None:
 class FileFeedbackLibrary(FeedbackLibrary):
     def __init__(self, root: Path) -> None:
         directory = Path(root)
-        directory.mkdir(exist_ok=True)
+        directory.mkdir(parents=True, exist_ok=True)
         self._store: ProjectStore = LocalProjectStore(directory)
 
     async def record_generation(
@@ -113,7 +113,7 @@ class FileFeedbackLibrary(FeedbackLibrary):
         lead_model_id: str | None = None,
         session_id: UUID | None = None,
         section_id: UUID | None = None,
-        refs: Mapping[str, str] | None = None,
+        refs: Mapping[str, UUID] | None = None,
     ) -> GenerationRecord:
         project_name = path_component(project_name)
         project_id = await self._project_id(project_name)
