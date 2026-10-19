@@ -35,7 +35,7 @@ agent: Agent[LeadDeps, str] = Agent(
     instructions=(
         "You are the songwriting lead. Plan one section at a time and save it as MIDI. "
         "Act only through tools. "
-        "save_section_midi writes <project>/<section>/<file>.mid. "
+        "save_section_midi writes <project>/<section>/<file>.mid from a prompt. "
         "Section and file are single path components. "
         "list_files, read_file, and write_file use the project store. "
         "A write path must start with a project folder, never a file at the mount root. "
@@ -85,16 +85,18 @@ async def save_section_midi(
     ctx: RunContext[LeadDeps],
     section: str,
     file: str,
+    prompt: str,
     project: str | None = None,
 ) -> str:
     """Generate MIDI for one section and save <project>/<section>/<file>.mid.
 
-    file is the stem with no suffix. project defaults to the current project.
+    prompt is given to the MIDI model. file is the stem with no suffix.
+    project defaults to the current project.
     """
     chosen = ctx.deps.project if project is None else project
     path = section_midi_path(chosen, section, file)
-    data = await ctx.deps.midi.generate(section)
-    saved = await ctx.deps.store.write(path, data)
+    result = await ctx.deps.midi.generate(section, prompt)
+    saved = await ctx.deps.store.write(path, result.data)
     return saved.path
 
 

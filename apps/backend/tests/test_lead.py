@@ -9,7 +9,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.native_tools import WebSearchTool
 
 from composerai_backend.lead import LeadDeps, _main, agent, run_lead, search_agent
-from composerai_midi import MidiModel
+from composerai_midi import MidiModel, MidiResult, Music21MidiModel
 from composerai_store import FileContent, PathRejected, ProjectEntry, ProjectStore
 
 
@@ -23,8 +23,18 @@ def _script(tool_name: str, args: Mapping[str, object]) -> FunctionModel:
 
 
 class _UnusedMidi:
-    async def generate(self, section: str) -> bytes:
-        raise AssertionError(section)
+    async def generate(self, section: str, prompt: str) -> MidiResult:
+        raise AssertionError((section, prompt))
+
+
+class _RecordingMidi:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self._inner = Music21MidiModel()
+
+    async def generate(self, section: str, prompt: str) -> MidiResult:
+        self.calls.append((section, prompt))
+        return await self._inner.generate(section, prompt)
 
 
 class _RecordingStore:
@@ -43,14 +53,21 @@ class _RecordingStore:
         return await self.inner.write(path, data)
 
 
-async def test_save_section_midi_writes_standard_midi(
-    deps: LeadDeps,
-    store: ProjectStore,
-) -> None:
-    with agent.override(model=_script("save_section_midi", {"section": "verse-1", "file": "sketch"})):
+async def test_save_section_midi_writes_standard_midi(store: ProjectStore) -> None:
+    recording = _RecordingStore(store)
+    midi = _RecordingMidi()
+    deps = LeadDeps(store=recording, midi=midi, project="demo", search_model="xai:grok-4.7")
+    with agent.override(
+        model=_script(
+            "save_section_midi",
+            {"section": "verse-1", "file": "sketch", "prompt": "a short verse"},
+        )
+    ):
         result = await run_lead("Save a verse.", deps)
 
     assert result == "done"
+    assert midi.calls == [("verse-1", "a short verse")]
+    assert recording.writes == ["demo/verse-1/sketch.mid"]
     saved = await store.read("demo/verse-1/sketch.mid")
     assert saved.path == "demo/verse-1/sketch.mid"
     assert saved.data.startswith(b"MThd")
@@ -63,7 +80,7 @@ async def test_save_section_midi_honors_an_explicit_project(
     with agent.override(
         model=_script(
             "save_section_midi",
-            {"section": "chorus", "file": "hook", "project": "other"},
+            {"section": "chorus", "file": "hook", "project": "other", "prompt": "a chorus hook"},
         )
     ):
         await run_lead("Save a chorus.", deps)
@@ -82,7 +99,12 @@ async def test_bad_section_does_not_create_a_file_at_the_mount_root(
     recording = _RecordingStore(store)
     deps = LeadDeps(store=recording, midi=_UnusedMidi(), project="demo", search_model="xai:grok-4.7")
     with pytest.raises(PathRejected):
-        with agent.override(model=_script("save_section_midi", {"section": section, "file": "sketch"})):
+        with agent.override(
+            model=_script(
+                "save_section_midi",
+                {"section": section, "file": "sketch", "prompt": "a short verse"},
+            )
+        ):
             await run_lead("Save a verse.", deps)
 
     assert recording.writes == []
